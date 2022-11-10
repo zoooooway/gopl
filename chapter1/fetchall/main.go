@@ -13,9 +13,10 @@ func main() {
 	ch := make(chan string)
 	for _, url := range os.Args[1:] {
 		go fetch(url, ch)
+		go fetch(url, ch)
 	}
-
 	for range os.Args[1:] {
+		fmt.Println(<-ch)
 		fmt.Println(<-ch)
 	}
 	fmt.Printf("total time is : %d", time.Since(start))
