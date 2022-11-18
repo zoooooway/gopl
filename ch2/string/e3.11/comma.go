@@ -27,11 +27,7 @@ func comma(str string) string {
 	for i, v := range str {
 		// 如果首位为正负号，那么逗号位置向后移动一位
 		if i == 1 && (strings.HasPrefix(str, "-") || strings.HasPrefix(str, "+")) {
-			_, err := buf.WriteRune(v)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "err: %s", err)
-				os.Exit(1)
-			}
+			writeRune(buf, v)
 			f++
 			continue
 		}
@@ -40,11 +36,17 @@ func comma(str string) string {
 			buf.WriteString(",")
 			f += 3
 		}
-		_, err := buf.WriteRune(v)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "err: %s", err)
-			os.Exit(1)
-		}
+		writeRune(buf, v)
 	}
 	return buf.String()
+}
+
+// write rune to buf.
+// program terminates immediately if any error occurs.
+func writeRune(buf bytes.Buffer, val rune) {
+	_, err := buf.WriteRune(val)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "err: %s", err)
+		os.Exit(1)
+	}
 }
