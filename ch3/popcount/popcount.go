@@ -26,6 +26,7 @@ func main() {
 // PopCount returns the population count (number of set bits) of x.
 func PopCount(x uint64) int {
 	// byte是uint8的别名，因此byte(x)将舍弃高位
+	// uint8代表无符号8位整数，因此最大值为255
 	return int(pc[byte(x>>(0*8))] +
 		pc[byte(x>>(1*8))] +
 		pc[byte(x>>(2*8))] +
