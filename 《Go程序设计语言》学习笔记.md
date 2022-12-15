@@ -36,6 +36,95 @@ reverseNew(&(arr[:])) // compile error: invalid operation: cannot take address o
 reverseNew(&s)
 ```
 
+#### 变量、指针与nil
+Go 中的每个指针都有两个基本信息: 指针的类型和它所指向的值。我们将把它们表示为一个类似于(type, value)的一对值。
+每个指针变量都需要一个类型，这就是为什么我们不能在不声明类型的情况下为变量赋一个 `nil` 值。
+```go
+// This does not work because we do not know the type
+n := nil // compile error
+```
+观察下列代码:
+```go
+var a *int = nil
+var b interface{} = nil
+
+fmt.Printf("a=(%T, %v)\n", a, a) // a=(*int, <nil>)
+fmt.Printf("b=(%T, %v)\n", b, b) // b=(<nil>, <nil>)
+```
+第二行输出似乎有点奇怪，似乎指针的类型应该是 `interface{}` 而不是 `nil`。
+简而言之，就是因为我们使用了空接口，所以任何类型都会满足。`<nil>` 类型在技术上是一种特殊类型，它满足空接口，所以**当编译器不能确定其他类型信息时，就会使用`<nil>` 类型**。
+
+观察下列代码:
+```go
+var a *int = nil
+var b interface{} = a
+
+fmt.Printf("a=(%T, %v)\n", a, a) // a=(*int, <nil>)
+fmt.Printf("b=(%T, %v)\n", b, b) // b=(*int, <nil>)
+```
+可以看到，如果将a指针赋值给b，那么b指针就有了确定的类型信息，因此编译器不会再使用 `<nil>` 类型给b赋值。
+
+理解上述所说后，再来看如下代码：
+```go
+var a *int = nil
+var b interface{} = nil
+
+// We will print out both type and value here
+fmt.Printf("a=(%T, %v)\n", a, a) // a=(*int, <nil>)
+fmt.Printf("b=(%T, %v)\n", b, b) // b=(<nil>, <nil>)
+fmt.Println()
+fmt.Println("a == nil:", a == nil) // true
+fmt.Println("b == nil:", b == nil) // true
+fmt.Println("a == b:", a == b) // false
+```
+你可能会觉得有些疑惑，为什么 `a == nil` 并且 `b == nil` ，但 `a != b`？
+先理解 `==` 运算所比较的是什么会有助于理解这个现象。上述 `==` 运算实际可以表示成下列伪代码：
+```go
+a == nil: (*int, <nil>) == (*int*, <nil>)
+b == nil: (<nil>, <nil>) == (<nil>, <nil>)
+# Notice that these two are clearly not equal
+# once we add in the type information.
+a == b: (*int, <nil>) == (<nil>, <nil>)
+```
+也就是说，实际 `==` 运算时，不仅需要比较值，同时需要比较类型。
+而为什么一个字面量形式的 `nil` 却能和不同类型的 `nil` 做比较呢？比如 `a == nil` 和 `b == nil`，a和b这两个变量的值虽然都是 `nil` ，但其类型却不同，在和字面量形式的 `nil` 做 `==` 运算时却都能得出相等的结果。
+原因在于编译器，编译器会将 `nil` 强制转换为正确的类型，这类似于直接声明字面量整数时编译器将其转换为声明变量的类型：
+```go
+var a int = 12
+var b float64 = 12
+```
+现在我们知道**在直接和字面量 `nil` 值作比较时，编译器会根据变量类型做强制转换**。
+
+再来看看另一种情况:
+```go
+var a *int = nil
+var b interface{} = a
+
+// We will print out both type and value here
+fmt.Printf("a=(%T, %v)\n", a, a) // a=(*int, <nil>)
+fmt.Printf("b=(%T, %v)\n", b, b) // b=(*int, <nil>)
+fmt.Println()
+fmt.Println("a == nil:", a == nil) // true
+fmt.Println("b == nil:", b == nil) // false
+fmt.Println("a == b:", a == b) // true
+```
+也许你会再次感到困惑，为什么 `b == nil` 的结果是 `false` ?
+上面我们提到：在直接和字面量 `nil` 值作比较时，编译器会根据变量类型做强制转换。那么在这里也许我们会想：b的实际类型是a的类型即 `*int`，那么在进行 `==` 运算时编译器应该将 `nil` 转换为 `(<nil>, <nil>)` 。
+但实际上，这很难做到。在实际程序中，b变量的值可能发生多次改变——比如再次声明一个 `*string` 类型的变量并将其赋值给b。这意味着编译器没法在编译期确定b的实际类型，而只可能在运行期确定b的实际类型。这将有它自己的一套独特的复杂性，可能不值得引入。
+
+总而言之，**当我们将硬编码的值与变量进行比较时，编译器必须假定它们具有某种特定的类型，并遵循某些规则来实现这一点**。
+如果你发现自己处理的各种类型都可以为 `nil`，那么避免问题的一个常用技巧就是明确地把 `nil` 分配给变量，而不是间接赋值。也就是说，不要写 `a = b`，而写:
+```go
+var a *int = nil
+var b interface{}
+
+if a == nil {
+  b = nil
+}
+```
+
+
+> 参见：https://www.calhoun.io/when-nil-isnt-equal-to-nil
 
 ### 赋值
 自增和自减是语句，而不是表达式，因此`x = i++`之类的表达式是错误的。
@@ -129,6 +218,7 @@ fmt.Printf("%T\n", q) // "[3]int"
 // 没有用到的索引可以省略，下面表示索引为99处的元素为-1，因此其他的元素为默认零值
 r := [...]int{99: -1}
 ```
+
 ### Slice
 Slice（切片）代表变长的序列，序列中每个元素都有相同的类型。
 一个slice是一个轻量级的数据结构，提供了访问数组子序列（或者全部）元素的功能，而且slice的底层确实引用一个数组对象。
@@ -167,3 +257,78 @@ make([]T, len, cap) // same as make([]T, cap)[:len]
 runes = append(runes, r)
 ```
 > 对于append函数，当slice所对应的底层数组不足以容纳新元素时，内存可能重新分配(为slice创建新的底层数组空间)，但我们不能确认此操作是否发生。
+
+### Map
+在Go语言中，一个map就是一个哈希表的引用。它是一个**无序**的key/value对的集合，其中所有的key都是不同的，然后通过给定的key可以在**常数时间复杂度**内检索、更新或删除对应的value。
+
+map中所有的key都有相同的类型，所有的value也有着相同的类型，但是key和value之间可以是不同的数据类型。其中K对应的**key必须是支持==比较运算符的数据类型**，所以map可以通过测试key是否相等来判断是否已经存在。
+
+内置的make函数可以创建一个map：
+```go
+ages := make(map[string]int) // mapping from strings to ints
+```
+
+也可以用map字面值的语法创建map，同时还可以指定一些最初的key/value：
+```go
+ages := map[string]int{
+    "alice":   31,
+    "charlie": 34,
+}
+empty := map[string]int{} // 创建一个空map
+```
+使用内置的delete函数可以删除元素：
+```go
+delete(ages, "alice") // remove element ages["alice"]
+```
+所有这些操作是安全的，即使这些元素不在map中也没有关系；如果查找失败将返回value类型对应的**零值**。
+有时候可能需要知道对应的元素是否真的是在map之中， 比如如果元素类型是一个数字，你可能需要区分一个已经存在的0，和不存在而返回零值的0，可以像下面这样测试：
+```go
+age, ok := ages["bob"]
+if !ok { /* "bob" is not a key in this map; age == 0. */ }
+```
+可以结合使用来使代码更加简洁
+```go
+if age, ok := ages["bob"]; !ok { 
+    /* ... */ 
+}
+```
+
+map上的大部分操作，包括查找、删除、`len` 和 `range` 循环都可以安全工作在 `nil` 值的map上，它们的行为和一个空的map类似。但是向一个 `nil` 值的map存入元素将导致一个`panic`异常。
+应此，需要谨记：**在向map存数据前必须先创建map**。
+
+map中的元素并不是一个变量，因此我们不能对map的元素进行取址操作：
+```go
+_ = &ages["bob"] // compile error: cannot take address of map element
+```
+禁止对map元素取址的原因是map可能随着元素数量的增长而重新分配更大的内存空间，从而可能导致之前的地址无效。
+> 不同的是，slice同样具有扩容特性，但对slice的元素却可以直接取址。这是由于slice的实现借助数组，而扩容时，新数组的元素即使内存地址改变，原有数组依然存在。因此扩容前取址的值仍然有效。
+> 同理，不能直接对slice取址，例如：
+> ```go
+> arr := [...]int{1, 2, 3, 4, 5}
+> s1 := &(arr[:3]) // invalid operation: cannot take address of (arr[:3]) (value of type []int)
+> s := arr[:3]
+> s2 := &s // compile success
+> s3 := &([...]int{1, 2, 3, 4, 5}) // compile success because array is fixed space
+> ```
+> 参见: https://stackoverflow.com/a/32496031/17180282
+
+和slice一样，map之间也不能进行相等比较；唯一的例外是和 `nil` 进行比较。
+```go
+ages := map[string]int{
+    "alice":   31,
+    "charlie": 34,
+}
+empty := map[string]int(nil)
+zero := map[string]int{}
+
+fmt.Println(ages == nil)
+fmt.Println(empty == nil)
+fmt.Println(zero == nil)
+
+fmt.Println(ages == empty) // invalid operation: cannot compare ages == empty (map can only be compared to nil)
+empty = nil
+fmt.Println(ages == empty) // invalid operation: cannot compare ages == empty (map can only be compared to nil)
+```
+
+
+
