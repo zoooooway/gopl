@@ -330,5 +330,115 @@ empty = nil
 fmt.Println(ages == empty) // invalid operation: cannot compare ages == empty (map can only be compared to nil)
 ```
 
+### Struct
+结构体是一种聚合的数据类型，是由零个或多个任意类型的值聚合成的实体。
 
+**如果结构体成员名字是以大写字母开头的，那么该成员就是导出的**；这是Go语言导出规则决定的。一个结构体可能同时包含导出和未导出的成员。
 
+一个命名为S的结构体类型将不能再包含S类型的成员：因为**一个聚合的值不能包含它自身**。（该限制同样适用于数组。）但是S类型的结构体可以包含 `*S` 指针类型的成员，这可以让我们创建递归的数据结构，比如链表和树结构等。
+结构体类型的零值是每个成员都是零值。通常会将零值作为最合理的默认值。
+
+结构体值也可以用结构体字面值表示，结构体字面值可以指定每个成员的值。
+```go
+type Point struct{ X, Y int }
+
+p1 := Point{1, 2}
+
+p2 := Point{X:1} // 如果成员被忽略的话将默认用零值
+```
+
+因为**在Go语言中，所有的函数参数都是值拷贝传入的**，函数参数将不再是函数调用时的原始变量。**因此，如果要在函数内部修改结构体成员的话，必须使用指针传入结构体**。
+
+### JSON
+`JavaScript` 对象表示法（`JSON`）是一种用于发送和接收结构化信息的标准协议。
+
+有如下结构体：
+```go
+type Movie struct {
+    Title  string
+    Year   int  `json:"released"`
+    Color  bool `json:"color,omitempty"`
+    Actors []string
+}
+
+var movies = []Movie{
+    {Title: "Casablanca", Year: 1942, Color: false,
+        Actors: []string{"Humphrey Bogart", "Ingrid Bergman"}},
+    {Title: "Cool Hand Luke", Year: 1967, Color: true,
+        Actors: []string{"Paul Newman"}},
+    {Title: "Bullitt", Year: 1968, Color: true,
+        Actors: []string{"Steve McQueen", "Jacqueline Bisset"}},
+    // ...
+}
+```
+> 在上面的结构体声明中，Year和Color成员后面的字符串面值是结构体成员**Tag**。
+
+将一个Go语言中的结构体 `slice` 转为 `JSON` 的过程叫**编组**（marshaling）。编组通过调用 `json.Marshal` 函数完成, 该函数将返还一个编码后的字节 `slice`，包含很长的字符串，并且没有空白缩进：
+```go
+data, err := json.Marshal(movies)
+if err != nil {
+    log.Fatalf("JSON marshaling failed: %s", err)
+}
+fmt.Printf("%s\n", data)
+```
+`json.MarshalIndent` 函数将产生整齐缩进的输出。该函数有两个额外的字符串参数用于表示每一行输出的前缀和每一个层级的缩进：
+```go
+data, err := json.MarshalIndent(movies, "", "    ")
+if err != nil {
+    log.Fatalf("JSON marshaling failed: %s", err)
+}
+fmt.Printf("%s\n", data)
+/*
+[
+    {
+        "Title": "Casablanca",
+        "released": 1942,
+        "Actors": [
+            "Humphrey Bogart",
+            "Ingrid Bergman"
+        ]
+    },
+    {
+        "Title": "Cool Hand Luke",
+        "released": 1967,
+        "color": true,
+        "Actors": [
+            "Paul Newman"
+        ]
+    },
+    {
+        "Title": "Bullitt",
+        "released": 1968,
+        "color": true,
+        "Actors": [
+            "Steve McQueen",
+            "Jacqueline Bisset"
+        ]
+    }
+]
+*/
+```
+在编码时，默认使用Go语言结构体的成员名字作为JSON的对象。并且**只有导出的结构体成员才会被编码**。
+
+一个结构体成员Tag是和在编译阶段关联到该成员的元信息字符串：
+```go
+Year  int  `json:"released"`
+Color bool `json:"color,omitempty"`
+```
+结构体的成员Tag可以是任意的字符串面值，但是通常是一系列用空格分隔的key:"value"键值对序列；因为值中含有双引号字符，因此成员Tag一般用原生字符串面值的形式书写。
+
+json开头键名对应的值用于控制encoding/json包的编码和解码的行为，并且encoding/...下面其它的包也遵循这个约定。
+
+成员Tag中json对应值的第一部分用于指定JSON对象的名字，比如将Go语言中的TotalCount成员对应到JSON中的total_count对象。
+Color成员的Tag还带了一个额外的omitempty选项，表示当Go语言结构体成员为空或零值时不生成该JSON对象（这里false为零值）。
+
+编码的逆操作是解码，对应将JSON数据解码为Go语言的数据结构，Go语言中一般叫 `unmarshaling`，通过 `json.Unmarshal` 函数完成。
+通过定义合适的Go语言数据结构，我们可以选择性地解码 `JSON` 中感兴趣的成员。
+如下，定义一个仅包含Title成员的结构体，解码后的结构体数组就仅包含Title信息。
+```go
+var titles []struct{ Title string }
+if err := json.Unmarshal(data, &titles); err != nil {
+    log.Fatalf("JSON unmarshaling failed: %s", err)
+}
+fmt.Println(titles) // "[{Casablanca} {Cool Hand Luke} {Bullitt}]"
+```
