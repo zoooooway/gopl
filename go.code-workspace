@@ -6,6 +6,7 @@
 	],
 	"settings": {
 		"commentTranslate.source": "Google",
-		"commentTranslate.multiLineMerge": true
+		"commentTranslate.multiLineMerge": true,
+		"editor.suggest.snippetsPreventQuickSuggestions": false
 	}
 }

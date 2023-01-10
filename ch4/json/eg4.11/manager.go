@@ -37,12 +37,10 @@ type Label struct {
 }
 
 type Request struct {
-	Id     uint16 `json:"id"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
-	URL    string `json:"url"`
-	Number uint16 `json:"number"`
-	State  string `json:"state"`
+	Title string `json:"title,omitempty"`
+	Body  string `json:"body,omitempty"`
+	State string `json:"state,omitempty"`
+	Label string `json:"label,omitempty"`
 }
 
 var token string
@@ -137,63 +135,46 @@ func main() {
 }
 
 func managerIssues(method string, owner string, repo string, issueNumber string) (resp *http.Response, err error) {
-	var data string
+	var req Request
 	if method == "get" {
 		url := fmt.Sprintf(issueURL, owner, repo) + "/" + issueNumber
-		return getIssue(url)
+		return handleIssue(http.MethodGet, url, req)
 	} else if method == "create" {
 		url := fmt.Sprintf(issueURL, owner, repo)
 		// via default text editor
-		if data, e := openTextEditorToWriter(tempFileDir, tempFilePattern); e != nil {
+		if req, e := openTextEditorToWriter(tempFileDir, tempFilePattern); e != nil {
 			return resp, e
 		} else {
-			return createIssue(url, data)
+			return handleIssue(http.MethodPost, url, req)
+
 		}
 
 	} else if method == "update" {
 		url := fmt.Sprintf(issueURL, owner, repo) + "/" + issueNumber
 		// via default text editor
-		if data, e := openTextEditorToWriter(tempFileDir, tempFilePattern); e != nil {
+		if req, e := openTextEditorToWriter(tempFileDir, tempFilePattern); e != nil {
 			return resp, e
 		} else {
-			return updateIssue(url, data)
+			return handleIssue(http.MethodPatch, url, req)
 		}
 
 	} else if method == "close" {
-		url := fmt.Sprintf(issueURL, owner, repo) + "/" + issueNumber + "/lock"
-		return closeIssue(url, data)
+		url := fmt.Sprintf(issueURL, owner, repo) + "/" + issueNumber
+		req.State = "closed"
+		return handleIssue(http.MethodPatch, url, req)
 	} else {
 		return nil, fmt.Errorf("illegal input")
 	}
 
 }
 
-func getIssue(url string) (resp *http.Response, err error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
+func handleIssue(method, url string, r Request) (resp *http.Response, err error) {
+	data, e := json.Marshal(r)
+	if e != nil {
+		return nil, e
 	}
-	req.Header.Add("Authorization", "Bearer "+token)
-
-	rep, e := cli.Do(req)
-	return rep, e
-}
-
-func createIssue(url string, data string) (resp *http.Response, err error) {
-	reader := bytes.NewReader([]byte(data))
-	req, err := http.NewRequest(http.MethodPost, url, reader)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("Authorization", "Bearer "+token)
-
-	rep, e := cli.Do(req)
-	return rep, e
-}
-
-func updateIssue(url string, data string) (resp *http.Response, err error) {
-	reader := bytes.NewReader([]byte(data))
-	req, e := http.NewRequest(http.MethodPatch, url, reader)
+	reader := bytes.NewReader(data)
+	req, e := http.NewRequest(method, url, reader)
 	if e != nil {
 		return nil, e
 
@@ -204,28 +185,17 @@ func updateIssue(url string, data string) (resp *http.Response, err error) {
 	return rep, e
 }
 
-func closeIssue(url string, data string) (resp *http.Response, err error) {
-	req, err := http.NewRequest(http.MethodPut, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("Authorization", "Bearer "+token)
-
-	rep, e := cli.Do(req)
-	return rep, e
-}
-
-func openTextEditorToWriter(dir, pattern string) (data string, e error) {
+func openTextEditorToWriter(dir, pattern string) (req Request, e error) {
 	if fs, e := os.CreateTemp(dir, pattern); e != nil {
-		return data, e
+		return req, e
 	} else {
-		var req Request
-		json, e := json.MarshalIndent(&req, "", "    ")
+		var model = Request{Title: "输入标题", Body: "输入内容", Label: "标签", State: "状态"}
+		template, e := json.MarshalIndent(&model, "", "    ")
 		if e != nil {
 			log.Fatalf("JSON marshaling failed: %s", e)
 		}
 
-		fs.Write([]byte(json))
+		fs.Write([]byte(template))
 
 		name := fs.Name()
 		fs.Close()
@@ -233,16 +203,21 @@ func openTextEditorToWriter(dir, pattern string) (data string, e error) {
 		cmd := exec.Command("notepad", name)
 		if e := cmd.Run(); e != nil {
 			os.Remove(fs.Name())
-			return data, e
+			return req, e
 		}
 
-		if bytes, e := os.ReadFile(name); e != nil {
-			return data, e
+		if bts, e := os.ReadFile(name); e != nil {
+			return req, e
 		} else {
 			if e := os.Remove(name); e != nil {
 				fmt.Fprintln(os.Stderr, e.Error())
 			}
-			return string(bytes), nil
+			bts = bytes.TrimPrefix(bts, []byte("\xef\xbb\xbf"))
+			model = Request{}
+			if e := json.Unmarshal(bts, &model); e != nil {
+				return req, e
+			}
+			return model, nil
 		}
 	}
 }
