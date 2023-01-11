@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 )
 
@@ -62,4 +63,16 @@ func main() {
 	fmt.Printf("Inventory Counts:\n* Small:        %d\n* Large:        %d\n* Unrecognized: %d\n",
 		counts[Small], counts[Large], counts[Unrecognized])
 
+	// fs, e := os.Create("./test.txt")
+	// if e != nil {
+	// 	fmt.Println(e.Error())
+	// }
+	// fs.Write([]byte("hhhhh"))
+	// fs.Close()
+	// fmt.Println(fs.Name())
+
+	os.WriteFile("./test.txt", []byte("aaa hello world"), os.ModeAppend)
+	f, _ := os.Stat("./test.txt")
+	f.Size()
+	fmt.Println(f.Size())
 }
