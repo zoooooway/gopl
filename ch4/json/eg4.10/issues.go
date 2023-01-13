@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"gopl/ch4/json/eg4.10/github"
 	"net/http"
 	"net/url"
 	"os"
@@ -10,34 +11,10 @@ import (
 	"time"
 )
 
-const IssuesURL = "https://api.github.com/search/issues"
-
-const Placeholder = "-------------------------------------------------------------------------------------"
-
-type IssuesSearchResult struct {
-	TotalCount int `json:"total_count"`
-	Items      []*Issue
-}
-
-type Issue struct {
-	Number    int
-	HTMLURL   string `json:"html_url"`
-	Title     string
-	State     string
-	User      *User
-	CreatedAt time.Time `json:"created_at"`
-	Body      string    // in Markdown format
-}
-
-type User struct {
-	Login   string
-	HTMLURL string `json:"html_url"`
-}
-
 // 修改issues程序，根据问题的时间进行分类，比如不到一个月的、不到一年的、超过一年。
 func main() {
 
-	m := make(map[string][]*Issue)
+	m := make(map[string][]*github.Issue)
 
 	if res, err := searchIssuesWithDate(os.Args[1:], ">=", time.Now().AddDate(0, 0, -30)); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
@@ -64,21 +41,21 @@ func main() {
 	}
 
 	for k, v := range m {
-		fmt.Printf("%s: %s\n", k, Placeholder)
+		fmt.Printf("%s: %s\n", k, github.Placeholder)
 		for _, item := range v {
 			fmt.Printf("#%-5d\t%-20.20s\t%.55s\t%v\n", item.Number, item.User.Login, item.Title, item.CreatedAt)
 		}
 	}
 }
 
-func searchIssuesWithDate(query []string, flag string, date time.Time) (*IssuesSearchResult, error) {
+func searchIssuesWithDate(query []string, flag string, date time.Time) (*github.IssuesSearchResult, error) {
 	query = append(query, "created:"+flag+date.Format("2006-01-02"))
 	return searchIssues(query)
 }
 
-func searchIssues(query []string) (*IssuesSearchResult, error) {
+func searchIssues(query []string) (*github.IssuesSearchResult, error) {
 	q := strings.Join(query, " ")
-	res, err := http.Get(IssuesURL + "?q=" + url.QueryEscape(q))
+	res, err := http.Get(github.IssuesURL + "?q=" + url.QueryEscape(q))
 	if err != nil {
 		fmt.Printf("error while searching for issues: %s", err.Error())
 		return nil, err
@@ -90,7 +67,7 @@ func searchIssues(query []string) (*IssuesSearchResult, error) {
 	}
 
 	body := res.Body
-	var issues IssuesSearchResult
+	var issues github.IssuesSearchResult
 	if err := json.NewDecoder(body).Decode(&issues); err != nil {
 		fmt.Printf("decode failed: %s", err.Error())
 		return nil, err

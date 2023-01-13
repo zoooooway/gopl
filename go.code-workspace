@@ -7,6 +7,9 @@
 	"settings": {
 		"commentTranslate.source": "Google",
 		"commentTranslate.multiLineMerge": true,
-		"editor.suggest.snippetsPreventQuickSuggestions": false
+		"editor.suggest.snippetsPreventQuickSuggestions": false,
+		"cSpell.words": [
+			"gopl"
+		]
 	}
 }
