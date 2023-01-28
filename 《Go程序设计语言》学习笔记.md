@@ -467,3 +467,28 @@ if err := json.Unmarshal(data, &titles); err != nil {
 }
 fmt.Println(titles) // "[{Casablanca} {Cool Hand Luke} {Bullitt}]"
 ```
+
+### 文本和HTML模板
+由 *text/template* 和 *html/template* 等模板包提供一个将变量值填充到一个文本或HTML格式的模板的机制。
+示例：
+```go
+const templ = `{{.TotalCount}} issues:
+{{range .Items}}----------------------------------------
+Number: {{.Number}}
+User:   {{.User.Login}}
+Title:  {{.Title | printf "%.64s"}}
+Age:    {{.CreatedAt | daysAgo}} days
+{{end}}`
+```
+在模板中使用的函数分为内置函数和注册函数，内置函数由GO语言内置实现，在任何模板中都可以使用。如果内置函数并没有提供能满足我们需要的函数，我们可以自己实现，并将其注册到该模板中：
+```go
+var report = template.Must(template.New("issuelist").
+    Funcs(template.FuncMap{"daysAgo": daysAgo}). // 注册自定义函数
+    Parse(templ))
+```
+> template.Must辅助函数简化模板编译时的错误处理：它接受一个模板和一个 `error` 类型的参数，检测 `error` 是否为`nil`（如果不是`nil`则发出`panic`异常），然后返回传入的模板。
+
+> 上述为text/template包用法，与其类似，html/template 也提供相同机制，并且其附带html字符转义。
+
+## 函数
+函数可以让我们将一个语句序列打包为一个单元，然后可以从程序中其它地方多次调用。
