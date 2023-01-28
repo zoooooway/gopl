@@ -1,14 +1,19 @@
-package three
+package main
 
 import (
+	"errors"
 	"fmt"
-	"gopl/test/one"
-	"gopl/test/testtwo"
 )
 
-func t() {
-	var a one.One = 1
-	fmt.Print(a)
+var str = "hello"
+var e = errors.New("new error")
 
-	var b testtwo.Two = 1
+func main() {
+	e := t("world")
+	fmt.Printf("%s", e)
+}
+
+func t(str string) (e error) {
+	fmt.Println(str)
+	return e
 }
