@@ -524,7 +524,7 @@ fmt.Println(hypot(3,4)) // "5"
 **函数的类型被称为函数的标识符**。如果两个函数形式参数列表和返回值列表中的变量类型一一对应，那么这两个函数被认为有相同的类型或标识符。形参和返回值的变量名不影响函数标识符，也不影响它们是否可以以省略参数类型的形式表示。
 
 **在函数体中，函数的形参作为局部变量，被初始化为调用者提供的值。函数的形参和有名返回值作为函数最外层的局部变量，被存储在相同的词法块中。**
-> 在作用域一节中提到，“当编译器遇到一个名字引用时，它会对其定义进行查找，查找过程从最内层的词法域向全局的作用域进行”，并且内层声明将屏蔽外层声明。因此，如果在函数内部
+> 在作用域一节中提到，“当编译器遇到一个名字引用时，它会对其定义进行查找，查找过程从最内层的词法域向全局的作用域进行”，并且内层声明将屏蔽外层声明。因此，在函数外声明的同名全局变量将被同名形参和返回值屏蔽。并且，不能在函数中声明同名变量，即使它们的类型不同。
 
 **实参通过值的方式传递，因此函数的形参是实参的拷贝。对形参进行修改不会影响实参。但是，如果实参包括引用类型，如指针，slice(切片)、map、function、channel等类型，实参可能会由于函数的间接引用被修改。**
 
@@ -535,3 +535,30 @@ package math
 func Sin(x float64) float //implemented in assembly language
 ```
 
+如果一个函数所有的返回值都有显式的变量名，那么该函数的return语句可以省略操作数。这称之为bare return。
+```go
+// CountWordsAndImages does an HTTP GET request for the HTML
+// document url and returns the number of words and images in it.
+func CountWordsAndImages(url string) (words, images int, err error) {
+    resp, err := http.Get(url)
+    if err != nil {
+        return
+    }
+    doc, err := html.Parse(resp.Body)
+    resp.Body.Close()
+    if err != nil {
+        err = fmt.Errorf("parsing HTML: %s", err)
+        return
+    }
+    words, images = countWordsAndImages(doc)
+    return
+}
+func countWordsAndImages(n *html.Node) (words, images int) { /* ... */ }
+```
+按照返回值列表的次序，返回所有的返回值，在上面的例子中，每一个return语句等价于：
+```go
+return words, images, err
+```
+> 虽然良好的命名很重要，但你也不必为每一个返回值都取一个适当的名字。比如，按照惯例，函数的最后一个bool类型的返回值表示函数是否运行成功，error类型的返回值代表函数的错误信息，对于这些类似的惯例，我们不必思考合适的命名，它们都无需解释。
+
+当一个函数有多处return语句以及许多返回值时，bare return 可以减少代码的重复，**但是使得代码难以被理解**。
