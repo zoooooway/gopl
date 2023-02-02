@@ -562,3 +562,68 @@ return words, images, err
 > 虽然良好的命名很重要，但你也不必为每一个返回值都取一个适当的名字。比如，按照惯例，函数的最后一个bool类型的返回值表示函数是否运行成功，error类型的返回值代表函数的错误信息，对于这些类似的惯例，我们不必思考合适的命名，它们都无需解释。
 
 当一个函数有多处return语句以及许多返回值时，bare return 可以减少代码的重复，**但是使得代码难以被理解**。
+
+### error
+**对于大部分函数而言，永远无法确保能否成功运行。**
+
+对于那些将运行失败看作是预期结果的函数，它们会返回一个额外的返回值，通常是最后一个，来传递错误信息。如果导致失败的原因只有一个，额外的返回值可以是一个布尔值，通常被命名为ok。比如，cache.Lookup失败的唯一原因是key不存在，那么代码可以按照下面的方式组织：
+```go
+value, ok := cache.Lookup(key)
+if !ok {
+    // ...cache[key] does not exist…
+}
+```
+
+对库函数而言，应仅向上传播错误，除非该错误意味着程序内部包含不一致性，即遇到了bug，才能在库函数中结束程序。
+
+### 函数值
+在Go中，函数被看作第一类值（first-class values）：函数像其他值一样，拥有类型，可以被赋值给其他变量，传递给函数，从函数返回。
+对函数值（function value）的调用类似函数调用：
+```go
+func square(n int) int { return n * n }
+func negative(n int) int { return -n }
+func product(m, n int) int { return m * n }
+
+f := square
+fmt.Println(f(3)) // "9"
+
+f = negative // 可以相互赋值为相同描述符的函数
+fmt.Println(f(3))     // "-3"
+fmt.Printf("%T\n", f) // "func(int) int"
+
+f = product // compile error: can't assign func(int, int) int to func(int) int
+```
+
+**函数类型的零值是`nil`。调用值为`nil`的函数值会引起`panic`错误**：
+```go
+var f func(int) int
+f(3) // 此处f的值为nil, 会引起panic错误
+```
+
+**函数值可以与`nil`比较**：
+```go
+var f func(int) int
+if f != nil {
+    f(3)
+}
+```
+但是**函数值之间是不可比较的，也不能用函数值作为`map`的`key`**。
+
+函数值使得我们不仅仅可以通过数据来参数化函数，亦可通过行为(函数)。
+```go
+// forEachNode针对每个结点x,都会调用pre(x)和post(x)。
+// pre和post都是可选的。
+// 遍历孩子结点之前,pre被调用
+// 遍历孩子结点之后，post被调用
+func forEachNode(n *html.Node, pre, post func(n *html.Node)) {
+    if pre != nil {
+        pre(n)
+    }
+    for c := n.FirstChild; c != nil; c = c.NextSibling {
+        forEachNode(c, pre, post)
+    }
+    if post != nil {
+        post(n)
+    }
+}
+```

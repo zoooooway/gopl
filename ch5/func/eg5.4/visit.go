@@ -28,7 +28,7 @@ func Visit(contents []string, nType string, n *html.Node) []string {
 	return contents
 }
 
-func fetch(url string) io.ReadCloser {
+func Fetch(url string) io.ReadCloser {
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		url = "http://" + url
 	}

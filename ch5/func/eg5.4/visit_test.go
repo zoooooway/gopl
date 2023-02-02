@@ -9,7 +9,7 @@ import (
 )
 
 func TestVisit(t *testing.T) {
-	r := fetch("https://vertx.io/")
+	r := Fetch("https://vertx.io/")
 	doc, err := html.Parse(r)
 	r.Close()
 	if err != nil {
