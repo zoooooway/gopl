@@ -627,3 +627,65 @@ func forEachNode(n *html.Node, pre, post func(n *html.Node)) {
     }
 }
 ```
+### 匿名函数
+拥有函数名的函数只能在包级语法块中被声明，通过函数字面量（function literal），我们可绕过这一限制，在任何表达式中表示一个函数值。函数字面量的语法和函数声明相似，区别在于func关键字后没有函数名。**函数值字面量是一种表达式，它的 值 被称为匿名函数（anonymous function）。**
+
+函数字面量允许我们在使用函数时，再定义它。
+更为重要的是，通过这种方式定义的函数可以访问完整的词法环境（lexical environment），这意味着**在函数中定义的内部函数可以引用该函数的变量**：
+```go
+// squares返回一个匿名函数。
+// 该匿名函数每次被调用时都会返回下一个数的平方。
+func squares() func() int {
+	var x int
+	return func() int {
+		x++
+		return x * x
+	}
+}
+func main() {
+	f1 := squares()
+	f2 := squares()
+	fmt.Println(f1()) // "1"
+	fmt.Println(f1()) // "4"
+	fmt.Println(f1()) // "9"
+	fmt.Println("---------------------")
+	fmt.Println(f2()) // "1"
+	fmt.Println(f2()) // "4"
+	fmt.Println(f2()) // "9"
+}
+```
+函数`squares`返回另一个类型为 `func() int` 的函数。对`squares`的一次调用会**生成一个局部变量** `x`并返回一个匿名函数。每次调用匿名函数时，该函数都会先使`x`的值加1，再返回`x`的平方。第二次调用`squares`时，会生成第二个`x`变量，并返回一个新的匿名函数。新匿名函数操作的是第二个x变量。
+
+**函数值不仅仅是一串代码，还记录了状态**。在`squares`中定义的匿名内部函数可以访问和更新`squares`中的局部变量，这意味着匿名函数和`squares`中，存在**变量引用**。这就是函数值属于**引用类型**和函数值**不可比较**的原因。
+`Go`使用闭包（closures）技术实现函数值，`Go`程序员也把函数值叫做闭包。
+>通过这个例子，我们看到变量的生命周期不由它的作用域决定：squares返回后，变量x仍然隐式的存在于f中。因此，变量x的生命周期现在由f决定了。
+
+#### 警告：捕获迭代变量
+`Go`使用闭包（closures）技术实现函数值，因此，在循环中的函数值引用迭代变量时非常容易出错。
+正确做法：
+```go
+var rmdirs []func()
+for _, d := range tempDirs() {
+    dir := d // NOTE: necessary!
+    os.MkdirAll(dir, 0755) // creates parent directories too
+    rmdirs = append(rmdirs, func() {
+        os.RemoveAll(dir)
+    })
+}
+// ...do some work…
+for _, rmdir := range rmdirs {
+    rmdir() // clean up
+}
+```
+错误做法：
+```go
+var rmdirs []func()
+for _, dir := range tempDirs() {
+    os.MkdirAll(dir, 0755)
+    rmdirs = append(rmdirs, func() {
+        os.RemoveAll(dir) // NOTE: incorrect!
+    })
+}
+```
+如果不将dir变量在循环中赋给另一个变量来保存，那么在函数值中，引用的变量dir将会是最后一次循环完成之后的dir值。也就是说，每一个函数值中的变量dir都是相同的，而不是预期的每次迭代的值。
+> https://docs.hacknode.org/gopl-zh/ch5/ch5-06.html
