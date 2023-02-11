@@ -703,3 +703,91 @@ func g([]int) {}
 fmt.Printf("%T\n", f) // "func(...int)"
 fmt.Printf("%T\n", g) // "func([]int)"
 ```
+
+### Deferred函数
+`defer`语句经常被用于处理成对的操作，如打开、关闭、连接、断开连接、加锁、释放锁。
+在调用普通函数或方法前加上关键字`defer`，就完成了`defer`所需要的语法。
+
+当**执行到**关键字`defer`所在语句时，函数和参数表达式得到**计算**，但直到包含该`defer`语句的函数**执行完毕**时，`defer`后的函数才会被**执行**，不论包含`defer`语句的函数是通过`return`正常结束，还是由于`panic`导致的异常结束。
+```go
+func ReadFile(filename string) ([]byte, error) {
+    f, err := os.Open(filename)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
+    return ReadAll(f)
+}
+```
+> 释放资源的defer应该直接跟在请求资源的语句后。
+
+对匿名函数采用defer机制，可以使其观察函数的返回值。
+```go
+func double(x int) (result int) {
+    defer func() { fmt.Printf("double(%d) = %d\n", x,result) }()
+    return x + x
+}
+_ = double(4)
+// Output:
+// "double(4) = 8"
+```
+
+被延迟执行的匿名函数甚至可以修改函数返回给调用者的返回值：
+```go
+func triple(x int) (result int) {
+    defer func() { result += x }()
+    return double(x)
+}
+fmt.Println(triple(4)) // "12"
+```
+
+**在循环体中的defer语句需要特别注意**，因为只有在函数执行完毕后，这些被延迟的函数才会执行。下面的代码会导致系统的文件描述符耗尽，因为在所有文件都被处理之前，没有文件会被关闭。
+```go
+for _, filename := range filenames {
+    f, err := os.Open(filename)
+    if err != nil {
+        return err
+    }
+    defer f.Close() // NOTE: risky; could run out of file descriptors
+    // ...process f…
+}
+```
+
+一种解决方法是将循环体中的defer语句移至另外一个函数。在每次循环时，调用这个函数。
+```go
+for _, filename := range filenames {
+    if err := doFile(filename); err != nil {
+        return err
+    }
+}
+func doFile(filename string) error {
+    f, err := os.Open(filename)
+    if err != nil {
+        return err
+    }
+    defer f.Close()
+    // ...process f…
+}
+```
+
+### Panic异常
+Go的类型系统会在编译时捕获很多错误，但有些错误只能在运行时检查，如数组访问越界、空指针引用等。这些运行时错误会引起`painc`异常。
+
+一般而言，当`panic`异常发生时，程序会中断运行，并立即执行在该`goroutine`中被延迟的函数（`defer`机制）。
+
+不是所有的`panic`异常都来自运行时，直接调用内置的`panic`函数也会引发`panic`异常；`panic`函数接受任何值作为参数。当某些不应该发生的场景发生时，我们就应该调用`panic`。
+
+**在Go的panic机制中，延迟函数的调用在释放堆栈信息之前**。这意味着，即使程序因为`panic`异常而将要退出，也可以在延迟函数中访问堆栈信息。
+
+### Recover捕获异常
+通常来说，不应该对`panic`异常做任何处理，但有时，也许我们可以从异常中恢复，至少我们可以在程序崩溃前，做一些操作。
+
+如果在`deferred`函数中调用了内置函数`recover`，并且定义该`defer`语句的函数发生了`panic`异常，`recover`会使程序从`panic`中恢复，并返回`panic value`。导致`panic`异常的函数不会继续运行，但能**正常返回**。**在未发生panic时调用`recover`，`recover`会返回`nil`。** 
+
+不加区分的恢复所有的`panic`异常，不是可取的做法；因为**在`panic`之后，无法保证包级变量的状态仍然和我们预期一致**。比如，对数据结构的一次重要更新没有被完整完成、文件或者网络连接没有被关闭、获得的锁没有被释放。此外，如果写日志时产生的`panic`被不加区分的恢复，可能会导致漏洞被忽略。
+
+**作为被广泛遵守的规范，你不应该试图去恢复其他包引起的`panic`**。 公有的`API`应该将函数的运行失败作为`error`返回，而不是`panic`。同样的，你也不应该恢复一个由他人开发的函数引起的`panic`，比如说调用者传入的回调函数，因为你无法确保这样做是安全的。
+
+有时我们很难完全遵循规范，举个例子，`net/http`包中提供了一个`web`服务器，将收到的请求分发给用户提供的处理函数。很显然，我们不能因为某个处理函数引发的`panic`异常，杀掉整个进程；`web`服务器遇到处理函数导致的`panic`时会调用`recover`，输出堆栈信息，继续运行。这样的做法在实践中很便捷，但也会引起资源泄漏，或是因为`recover`操作，导致其他问题。
+
+**基于以上原因，安全的做法是有选择性的`recover`**。换句话说，**只恢复应该被恢复的panic异常**，此外，这些异常所占的比例应该尽可能的低。
