@@ -791,3 +791,289 @@ Go的类型系统会在编译时捕获很多错误，但有些错误只能在运
 有时我们很难完全遵循规范，举个例子，`net/http`包中提供了一个`web`服务器，将收到的请求分发给用户提供的处理函数。很显然，我们不能因为某个处理函数引发的`panic`异常，杀掉整个进程；`web`服务器遇到处理函数导致的`panic`时会调用`recover`，输出堆栈信息，继续运行。这样的做法在实践中很便捷，但也会引起资源泄漏，或是因为`recover`操作，导致其他问题。
 
 **基于以上原因，安全的做法是有选择性的`recover`**。换句话说，**只恢复应该被恢复的panic异常**，此外，这些异常所占的比例应该尽可能的低。
+
+
+## 方法
+方法是基于面向对象编程（OOP）的概念。
+
+一个对象其实也就是一个简单的值或者一个变量，在这个对象中会包含一些方法，而**一个方法则是一个一个和特殊类型关联的函数**。一个面向对象的程序会用方法来表达其属性和对应的操作，这样使用这个对象的用户就不需要直接去操作对象，而是借助方法来做这些事情。
+
+### 方法声明
+在函数声明时，在其名字之前放上一个变量，这就是一个方法的声明方式。
+这个附加的参数会将该函数附加到这种类型上，即相当于为这种类型定义了一个**独占**的方法。
+```go
+import "math"
+
+type Point struct{ X, Y float64 }
+
+// traditional function
+func Distance(p, q Point) float64 {
+    return math.Hypot(q.X-p.X, q.Y-p.Y)
+}
+
+// same thing, but as a method of the Point type
+func (p Point) Distance(q Point) float64 {
+    return math.Hypot(q.X-p.X, q.Y-p.Y)
+}
+
+func (p Point) X(q Point) {} // error: field and method with the same name X
+```
+上面的代码中，参数p，叫做方法的接收器（receiver）。
+`p.Distance`的表达式叫做选择器，因为他会选择合适的对应p这个对象的`Distance`方法来执行。选择器也会被用来选择一个`struct`类型的字段，比如`p.X`。
+由于方法和字段都是在同一命名空间，所以**对象的字段和对象的方法名重复的话，则会编译报错**。
+
+让我们来定义一个Path类型，这个Path代表一个线段的集合，并且也给这个Path定义一个叫Distance的方法。
+```go
+// A Path is a journey connecting the points with straight lines.
+type Path []Point
+// Distance returns the distance traveled along the path.
+func (path Path) Distance() float64 {
+    sum := 0.0
+    for i := range path {
+        if i > 0 {
+            sum += path[i-1].Distance(path[i])
+        }
+    }
+    return sum
+}
+```
+Path是一个命名的slice类型，而不是Point那样的struct类型，然而我们依然可以为它定义方法。
+
+在Go语言里，我们为一些简单的数值、字符串、slice、map来定义一些附加行为很方便。我们可以给同一个包内的**任意命名类型**定义方法，只要这个命名类型的底层类型（译注：这个例子里，底层类型是指[]Point的底层类型是slice，Path就是命名类型）不是指针或者interface。
+
+**对于一个给定的类型，其内部的方法都必须有唯一的方法名，但是不同的类型却可以有同样的方法名。**
+
+### 基于指针对象的方法
+**当调用一个函数时，会对其每一个参数值进行拷贝**，如果一个函数需要更新一个变量，或者函数的其中一个参数实在太大我们希望能够避免进行这种默认的拷贝，这种情况下我们就需要用到指针了。
+
+例如用来更新接收器的对象的方法，当这个接受者变量本身比较大时，我们就可以用其指针而不是对象来声明方法，如下：
+```go
+func (p *Point) ScaleBy(factor float64) {
+    p.X *= factor
+    p.Y *= factor
+}
+```
+这个方法的名字是`(*Point).ScaleBy`。这里的括号是必须的；没有括号的话这个表达式可能会被理解为`*(Point.ScaleBy)`。
+
+在现实的程序里，一般会约定如果Point这个类有一个指针作为接收器的方法，那么所有Point的方法都必须有一个指针接收器，即使是那些并不需要这个指针接收器的函数。
+
+只有类型（Point）和指向他们的指针(*Point)，才可能是出现在接收器声明里的两种接收器。此外，为了避免歧义，在声明方法时，如果一个类型名本身是一个指针的话，是不允许其出现在接收器中的，比如下面这个例子：
+```go
+type P *int
+func (P) f() { /* ... */ } // compile error: invalid receiver type
+```
+
+不管你的`method`的`receiver`是指针类型还是非指针类型，都是可以通过指针/非指针类型进行调用的，编译器会帮你做类型转换。
+
+如果命名类型`T`（译注：用`type xxx`定义的类型）的所有方法都是用`T`类型自己来做接收器（而不是`*T`），那么拷贝这种类型的实例就是安全的；调用他的任何一个方法也就会产生一个值的拷贝。比如`time.Duration`的这个类型，在调用其方法时就会被全部拷贝一份，包括在作为参数传入函数的时候。
+> 与函数调用会拷贝参数的值是相同道理，调用方法会拷贝接收器的值。
+
+但是如果一个方法使用指针作为接收器，你需要避免对其进行拷贝，因为这样可能会破坏掉该类型内部的不变性。比如你对`bytes.Buffer`对象进行了拷贝，那么可能会引起原始对象和拷贝对象只是别名而已，实际上它们指向的对象是一样的。紧接着对拷贝后的变量进行修改可能会有让你有意外的结果。
+> 以指针作为接收器来调用方法，如果拷贝这个指针，并且通过方法将其传输到了其他地方进行持有。那么，该指针就可能被修改并且影响原始对象的值，而且我们完全不知道会不会被修改。
+
+#### Nil也是一个合法的接收器类型
+就像一些函数允许nil指针作为参数一样，方法理论上也可以用nil指针作为其接收器，尤其当nil对于对象来说是合法的零值时，比如map或者slice。
+
+因为nil的字面量编译器无法判断其准确类型，所以想要使用`nil`来作为接收器调用方法时，需要先转换为对应类型的`nil`值。
+```go
+c := (*Point)(nil)
+c.Distance(Point{1, 2}) // compile success
+
+nil.Distance(Point{1, 2}) // compile error: nil.Distance undefined (type untyped nil has no field or method Distance)
+
+(*Point)(nil).Distance(Point{1, 2}) // compile success
+```
+
+### 通过嵌入结构体来扩展类型
+结构体的内嵌可以使我们在定义结构体时得到一种句法上的简写形式，并使其包含内嵌结构体类型所具有的一切字段，然后再定义一些自己的。如果我们想要的话，我们可以直接认为通过嵌入的字段就是结构体自身的字段，而完全不需要在调用时指出内嵌的结构体是什么。
+同理，对于结构体的方法也是一样。我们可以把一个结构体类型A当作接收器来调用该结构体里内嵌机构体B所具有的方法，即使结构体A里没有声明这些方法。
+
+在类型中内嵌的匿名字段也可能是一个命名类型的指针，这种情况下字段和方法会被间接地引入到当前的类型中（译注：访问需要通过该指针指向的对象去取）。添加这一层间接关系让我们可以共享通用的结构并动态地改变对象之间的关系。下面这个ColoredPoint的声明内嵌了一个`*Point`的指针。
+```go
+type ColoredPoint struct {
+    *Point
+    Color color.RGBA
+}
+
+p := ColoredPoint{&Point{1, 1}, red}
+q := ColoredPoint{&Point{5, 4}, blue}
+fmt.Println(p.Distance(*q.Point)) // "5"
+q.Point = p.Point                 // p and q now share the same Point
+p.ScaleBy(2)
+fmt.Println(*p.Point, *q.Point) // "{2 2} {2 2}"
+```
+
+虽然方法只能在命名类型（像Point）或者指向类型的指针上定义。但是通过内嵌，有些时候我们也可以在匿名`struct`类型上定义方法。
+```go
+var cache = struct {
+    sync.Mutex
+    mapping map[string]string
+}{
+    mapping: make(map[string]string),
+}
+
+
+func Lookup(key string) string {
+    cache.Lock()
+    v := cache.mapping[key]
+    cache.Unlock()
+    return v
+}
+```
+匿名结构体cache调用的方法其实是内部的内嵌结构体Mutex类型的方法，但在我们看来，这就像他自己定义的方法一样。
+
+### 方法值和方法表达式
+
+我们经常选择一个方法，并且在同一个表达式里执行，比如常见的p.Distance()形式，实际上将其分成两步来执行也是可能的。
+`p.Distance`叫作“选择器”，选择器会返回一个方法“值”->一个将方法（`Point.Distance`）绑定到特定接收器变量的函数。这个函数可以不通过指定其接收器即可被调用；即调用时不需要指定接收器(因为已经在前文中指定过了），只要传入函数的参数即可。
+
+在一个包的API需要一个函数值、且调用方希望操作的是某一个绑定了对象的方法的话，方法“值”会非常实用。
+
+举例来说，下面例子中的`time.AfterFunc`这个函数的功能是在指定的延迟时间之后来执行一个（译注：另外的）函数。且这个函数操作的是一个`Rocket`对象`r`
+```go
+type Rocket struct { /* ... */ }
+func (r *Rocket) Launch() { /* ... */ }
+r := new(Rocket)
+
+time.AfterFunc(10 * time.Second, func() { r.Launch() })
+```
+直接用方法“值”传入AfterFunc的话可以更为简短：
+```go
+time.AfterFunc(10 * time.Second, r.Launch)
+```
+> 省去了定义匿名函数
+
+和方法“值”相关的还有**方法表达式**。当调用一个方法时，与调用一个普通的函数相比，我们必须要用选择器（`p.Distance`）语法来指定方法的接收器。
+
+当`T`是一个类型时，方法表达式可能会写作`T.f`或者`(*T).f`，会返回一个函数“值”，这种函数会将其第一个参数用作接收器，所以可以用通常（译注：不写选择器）的方式来对其进行调用：
+```go
+p := Point{1, 2}
+q := Point{4, 6}
+
+distance := Point.Distance   // method expression
+fmt.Println(distance(p, q))  // "5"
+fmt.Printf("%T\n", distance) // "func(Point, Point) float64"
+
+scale := (*Point).ScaleBy
+scale(&p, 2)
+fmt.Println(p)            // "{2 4}"
+fmt.Printf("%T\n", scale) // "func(*Point, float64)"
+
+// 译注：这个Distance实际上是指定了Point对象为接收器的一个方法func (p Point) Distance()，
+// 但通过Point.Distance得到的函数需要比实际的Distance方法多一个参数，
+// 即其需要用第一个额外参数指定接收器，后面排列Distance方法的参数。
+// 看起来本书中函数和方法的区别是指有没有接收器，而不像其他语言那样是指有没有返回值。
+```
+
+当你根据一个变量来决定调用同一个类型的哪个函数时，方法表达式就显得很有用了。你可以根据选择来调用接收器各不相同的方法。下面的例子，变量`op`代表`Point`类型的`addition`或者`subtraction`方法，`Path.TranslateBy`方法会为其`Path`数组中的每一个`Point`来调用对应的方法：
+```go
+type Point struct{ X, Y float64 }
+
+func (p Point) Add(q Point) Point { return Point{p.X + q.X, p.Y + q.Y} }
+func (p Point) Sub(q Point) Point { return Point{p.X - q.X, p.Y - q.Y} }
+
+type Path []Point
+
+func (path Path) TranslateBy(offset Point, add bool) {
+    var op func(p, q Point) Point
+    if add {
+        op = Point.Add
+    } else {
+        op = Point.Sub
+    }
+    for i := range path {
+        // Call either path[i].Add(offset) or path[i].Sub(offset).
+        path[i] = op(path[i], offset)
+    }
+}
+```
+
+#### 示例: Bit数组
+```go
+// An IntSet is a set of small non-negative integers.
+// Its zero value represents the empty set.
+type IntSet struct {
+    words []uint64
+}
+
+// Has reports whether the set contains the non-negative value x.
+func (s *IntSet) Has(x int) bool {
+    word, bit := x/64, uint(x%64)
+    return word < len(s.words) && s.words[word]&(1<<bit) != 0
+}
+
+// Add adds the non-negative value x to the set.
+func (s *IntSet) Add(x int) {
+    word, bit := x/64, uint(x%64)
+    for word >= len(s.words) {
+        s.words = append(s.words, 0)
+    }
+    s.words[word] |= 1 << bit
+}
+
+// UnionWith sets s to the union of s and t.
+func (s *IntSet) UnionWith(t *IntSet) {
+    for i, tword := range t.words {
+        if i < len(s.words) {
+            s.words[i] |= tword
+        } else {
+            s.words = append(s.words, tword)
+        }
+    }
+}
+
+// String returns the set as a string of the form "{1 2 3}".
+func (s *IntSet) String() string {
+    var buf bytes.Buffer
+    buf.WriteByte('{')
+    for i, word := range s.words {
+        if word == 0 {
+            continue
+        }
+        for j := 0; j < 64; j++ {
+            if word&(1<<uint(j)) != 0 {
+                if buf.Len() > len("{") {
+                    buf.WriteByte(' ')
+                }
+                fmt.Fprintf(&buf, "%d", 64*i+j)
+            }
+        }
+    }
+    buf.WriteByte('}')
+    return buf.String()
+}
+```
+
+当你为一个复杂的类型定义了一个`String`方法时，`fmt`包就会特殊对待这种类型的值，这样可以让这些类型在打印的时候看起来更加友好，而不是直接打印其原始的值。`fmt`会直接调用用户定义的`String`方法。这种机制依赖于接口和类型断言。
+
+这里要注意：我们声明的`String`和`Has`两个方法都是以指针类型`*IntSet`来作为接收器的，但实际上对于这两个类型来说，把接收器声明为指针类型也没什么必要。不过另外两个函数就不是这样了，因为另外两个函数操作的是`s.words`对象，如果你不把接收器声明为指针对象，那么实际操作的是拷贝对象，而不是原来的那个对象。因此，因为我们的`String`方法定义在`IntSet`指针上，所以当我们的变量是`IntSet`类型而不是`IntSet`指针时，可能会有下面这样让人意外的情况：
+```go
+fmt.Println(&x)         // "{1 9 42 144}"
+fmt.Println(x.String()) // "{1 9 42 144}"
+fmt.Println(x)          // "{[4398046511618 0 65536]}"
+```
+
+在第一个`Println`中，我们打印一个`*IntSet`的指针，这个类型的指针确实有自定义的`String`方法。第二`Println`，我们直接调用了`x`变量的`String()`方法；这种情况下编译器会隐式地在`x`前插入`&`操作符（前面提到过，编译器在这种情况下会帮我们做隐式插入），这样相当于我们还是调用的`IntSet`指针的`String`方法。在第三个`Println`中，因为`IntSet`类型没有`String`方法，所以`Println`方法会直接以原始的方式理解并打印。所以在这种情况下`&`符号是不能忘的。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
