@@ -59,3 +59,7 @@ func forEachNode(n *html.Node, pre, post func(n *html.Node)) {
 		post(n)
 	}
 }
+
+func Print(n *html.Node) {
+	forEachNode(n, startElement, endElement)
+}
