@@ -1124,11 +1124,45 @@ type ReadWriter interface {
 
 上面三种方式的效果完全相同，方法顺序的变化也没有影响，唯一重要的就是这个集合里面的方法。
 
+### 实现接口的条件
+一个类型如果拥有一个接口需要的所有方法，那么这个类型就实现了这个接口。
 
+表达一个类型属于某个接口只要这个类型实现这个接口。所以：
+```go
+var w io.Writer
+w = os.Stdout           // OK: *os.File has Write method
+w = new(bytes.Buffer)   // OK: *bytes.Buffer has Write method
+w = time.Second         // compile error: time.Duration lacks Write method
 
+var rwc io.ReadWriteCloser
+rwc = os.Stdout         // OK: *os.File has Read, Write, Close methods
+rwc = new(bytes.Buffer) // compile error: *bytes.Buffer lacks Close method
+```
 
+这个规则甚至适用于等式右边本身也是一个接口类型:
+```go
+w = rwc                 // OK: io.ReadWriteCloser has Write method
+rwc = w                 // compile error: io.Writer lacks Close method
+```
 
+关于`interface{}`类型，它没有任何方法，因此`interface{}`被称为空接口类型。
+因为空接口类型对实现它的类型没有要求，所以**我们可以将任意一个值赋给空接口类型**。
 
+对于每一个命名过的具体类型`T`；它的一些方法的接收者是类型T本身然而另一些则是一个`*T`的指针。还记得在`T`类型的参数上调用一个`*T`的方法是合法的，只要这个参数是一个变量；编译器隐式的获取了它的地址。但这仅仅是一个语法糖：T类型的值不拥有所有`*T`指针的方法，这样它就可能只实现了更少的接口。
+```go
+type IntSet struct { /* ... */ }
+func (*IntSet) String() string
+var _ = IntSet{}.String() // compile error: String requires *IntSet receiver
+
+var s IntSet
+var _ = s.String() // OK: s is a variable and &s has a String method
+
+var _ fmt.Stringer = &s // OK
+var _ fmt.Stringer = s  // compile error: IntSet lacks String method
+```
+> 需要注意的就是`IntSet{}`这种字面量表达式不会使编译器去隐式获取表达式的指针。
+
+非空的接口类型比如`io.Writer`经常被指针类型实现，尤其当一个或多个接口方法像Write方法那样隐式的给接收者带来变化的时候。一个结构体的指针是非常常见的承载方法的类型。
 
 
 
