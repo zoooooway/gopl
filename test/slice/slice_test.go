@@ -1,7 +1,9 @@
 package slice
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"testing"
 )
 
@@ -27,17 +29,18 @@ func TestSlice(t *testing.T) {
 	// ss[1] = "halo"
 	// fmt.Println(ss)
 	// fmt.Println(ns)
-	Ensome{}.write()
+	// Ensome{}.write()
+	var a A
+	var w io.Writer = &bytes.Buffer{}
+	fmt.Printf("a=(%T, %v)\n", a, a)
+	fmt.Printf("w=(%T, %v)\n", w, w)
 }
 
-type Some interface {
-	write()
-	read(string)
+type A struct {
+	int
+	io.Writer
 }
 
-type Ensome struct{ Some }
-
-func (e Ensome) write() {
-	fmt.Sscanf(s, "%f%s", &value, &unit)
-	fmt.Println("test write")
-}
+// func (a A) write() {
+// 	fmt.Println("test write")
+// }

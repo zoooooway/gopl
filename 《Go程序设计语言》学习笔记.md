@@ -1164,25 +1164,119 @@ var _ fmt.Stringer = s  // compile error: IntSet lacks String method
 
 非空的接口类型比如`io.Writer`经常被指针类型实现，尤其当一个或多个接口方法像Write方法那样隐式的给接收者带来变化的时候。一个结构体的指针是非常常见的承载方法的类型。
 
+### 接口值
+**接口值，由两个部分组成，一个具体的类型(type)和那个类型的值(value)。**
+> 变量一节提到：每个变量都具备类型和值。假设存在变量a，则可以用`fmt.Printf("a=(%T, %v)\n", a, a)`来查看其类型和值。
 
+它们被称为接口的**动态类型**和**动态值**。
+> 动态类型指实现这个接口的类型（比如结构体），动态值就是这个类型的对应值
 
+对于像`Go`语言这种静态类型的语言，类型是编译期的概念，**因此一个类型不是一个值**。
+> 不大能理解这句话什么意思...
 
+下面4个语句中，变量w得到了3个不同的值。（声明时的值和最后一行的值是相同的）
+```go
+var w io.Writer
+w = os.Stdout
+w = new(bytes.Buffer)
+w = nil
+```
 
+在`Go`语言中，变量总是被一个定义明确的值初始化，即使接口类型也不例外。**一个接口的零值就是它的类型和值的部分都是`nil`**。
+![](https://raw.githubusercontent.com/zoooooway/picgo/master/202302251758900.png)
 
+**一个接口值基于它的动态类型被描述为空或非空**，所以在`var w io.Writer`这里，`w`是一个空的接口值。
+> 因为`w`被声明为`io.Writer`的接口值，而声明语句中没有给出`w`动态类型即`io.Writer`的具体实现类型，因此`w`的值为空
 
+可以通过使用`w==nil`或者`w!=nil`来判断接口值是否为空。调用一个空接口值上的任意方法都会产生`panic`:
+```go
+w.Write([]byte("hello")) // panic: nil pointer dereference
+```
 
+</br>
 
+第二个语句将一个`*os.File`类型的值赋给变量`w`:
+```go
+w = os.Stdout
+```
 
+这个赋值过程调用了一个具体类型到接口类型的隐式转换，这和显式的使用`io.Writer(os.Stdout)`是等价的。
+这个接口值的动态类型被设为`*os.File`指针的类型描述符，它的动态值持有`os.Stdout`的拷贝；这是一个代表处理标准输出的`os.File`类型变量的指针。
+![](https://raw.githubusercontent.com/zoooooway/picgo/master/202302252025618.png)
 
+通常在编译期，我们不知道接口值的动态类型是什么，所以一个接口上的调用必须使用动态分配。
+因为不是直接进行调用，所以编译器必须**把代码生成在类型描述符的`Write`方法上，然后间接调用那个地址**。这个**调用的接收者是一个接口动态值的拷贝**：`os.Stdout`（`os.Stdout`是指针，那如果不是指针而是类型值呢?）。效果和下面这个直接调用一样：
+```go
+os.Stdout.Write([]byte("hello")) // "hello"
+```
+</br>
 
+第三个语句给接口值赋了一个`*bytes.Buffer`类型的值:
+```go
+w = new(bytes.Buffer)
+```
 
+现在动态类型是`*bytes.Buffer`并且动态值是一个指向新分配的缓冲区的指针。
+![](https://raw.githubusercontent.com/zoooooway/picgo/master/202302252032832.png)
 
+</br>
 
+最后，第四个语句将nil赋给了接口值：
+```go
+w = nil
+```
 
+这个重置将它所有的部分都设为`nil`值，**把变量`w`恢复到和它之前定义时相同的状态**，在图7.1中可以看到。
 
+**一个接口值可以持有任意大的动态值**。
+例如，表示时间实例的time.Time类型，这个类型有几个对外不公开的字段。我们从它上面创建一个接口值：
+```go
+var x interface{} = time.Now()
+```
 
+结果可能和图7.4相似。从概念上讲，不论接口值多大，动态值总是可以容下它。（这只是一个概念上的模型；具体的实现可能会非常不同）
+![](https://raw.githubusercontent.com/zoooooway/picgo/master/202302252043695.png)
 
+接口值可以使用`==`和`!＝`来进行比较。
+因为**接口值是可比较的**，所以它们可以用在`map`的键或者作为`switch`语句的操作数。
+**两个接口值相等仅当它们都是`nil`值，或者它们的动态类型相同并且动态值也根据这个动态类型的`==`操作相等**。
+> 可以参照变量、指针与`nil`一节中的内容来理解
 
+如果两个接口值的动态类型相同，但是这个动态类型是不可比较的（比如切片），将它们进行比较就会失败并且`panic`:
+```go
+var x interface{} = []int{1, 2, 3}
+fmt.Println(x == x) // panic: comparing uncomparable type []int
+```
+
+考虑到这点，接口类型是非常与众不同的。其它类型要么是安全的可比较类型（如基本类型和指针）要么是完全不可比较的类型（如切片，映射类型，和函数），但是**在比较接口值或者包含了接口值的聚合类型时，我们必须要意识到潜在的`panic`**。同样的风险也存在于使用接口作为`map`的键或者`switch`的操作数。只能比较你非常确定它们的动态值是可比较类型的接口值。
+
+#### 警告：一个包含nil指针的接口不是nil接口
+**一个不包含任何值的`nil`接口值和一个刚好包含`nil`指针的接口值是不同的**。
+
+思考下面的程序。当`debug`变量设置为`true`时，`main`函数会将`f`函数的输出收集到一个`bytes.Buffer`类型中。
+```go
+const debug = true
+
+func main() {
+    var buf *bytes.Buffer
+    if debug {
+        buf = new(bytes.Buffer) // enable collection of output
+    }
+    f(buf) // NOTE: subtly incorrect!
+    if debug {
+        // ...use buf...
+    }
+}
+
+// If out is non-nil, output will be written to it.
+func f(out io.Writer) {
+    // ...do something...
+    if out != nil {
+        out.Write([]byte("done!\n"))
+    }
+}
+```
+> 参考变量、指针与`nil`一节。并解释上述代码在`debug`值为`false`时会发生什么?
 
 
 

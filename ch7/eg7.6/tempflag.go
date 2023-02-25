@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+// eg7.7 解释为什么帮助信息在它的默认值是20.0没有包含°C的情况下输出了°C。
+// 原因在于默认值20.0其实是Celsius类型，而Celsius类型中定义了String()方法输出°C
 var temp = CelsiusFlag("temp", 20.0, "the temperature")
 
 // 对tempFlag加入支持开尔文温度
