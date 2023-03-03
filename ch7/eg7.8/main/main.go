@@ -21,6 +21,9 @@ var tb msort.Table = msort.Table{Tks: tracks}
 func main() {
 	http.HandleFunc("/tracks/sort", handler)
 	http.HandleFunc("/tracks/sort/clear", handleClear)
+	mux := http.NewServeMux()
+	mux.Handle("/list", http.HandlerFunc(handler))
+	mux.Handle("/price", http.HandlerFunc(handler))
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))
 }
 
