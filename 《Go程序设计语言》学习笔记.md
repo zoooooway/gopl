@@ -1279,17 +1279,44 @@ func f(out io.Writer) {
 > 参考变量、指针与`nil`一节。并解释上述代码在`debug`值为`false`时会发生什么?
 
 
+### 类型断言
+类型断言是一个使用在接口值上的操作。
+在语法上，形如`x.(T)`这种声明被称为断言类型，这里`x`表示一个接口的类型，`T`表示一个类型。一个类型断言检查它操作对象的动态类型(`x`)是否和断言的类型(`T`)匹配。
+这里有两种可能:
+* 如果断言的类型`T`是一个**具体类型**，类型断言检查`x`的动态类型是否和`T`相同。
+  如果这个检查成功了，类型断言的结果是`x`的动态值，当然它的类型是`T`。换句话说，具体类型的类型断言从它的操作对象中获得具体的值。如果检查失败，这个操作会抛出`panic`。例如：
+    ```go
+    var w io.Writer
+    w = os.Stdout
+    f := w.(*os.File)      // success: f == os.Stdout
+    c := w.(*bytes.Buffer) // panic: interface holds *os.File, not *bytes.Buffer
+    ```
+* 如果相反地断言的类型`T`是一个**接口类型**，类型断言检查`x`的动态类型是否满足`T`接口的要求（判断`x`是否实现了`T`）。
+  在下面的第一个类型断言后，`w`和`rw`都持有`os.Stdout`，因此它们都有一个动态类型`*os.File`，但是变量`w`是一个`io.Writer`类型，只对外公开了文件的`Write`方法，而`rw`变量还公开了它的`Read`方法。
+    ```go
+    var w io.Writer
+    w = os.Stdout
+    rw := w.(io.ReadWriter) // success: *os.File has both Read and Write
+    w = new(ByteCounter)
+    rw = w.(io.ReadWriter) // panic: *ByteCounter has no Read method
+    ```
 
+**如果断言操作的对象(`x`)是一个`nil`接口值，那么这个类型断言必定会失败**。
 
+如果类型断言出现在一个预期有两个结果的赋值操作中，例如如下的定义，这个操作不会在失败的时候发生`panic`，但是替代地返回一个额外的第二个结果，这个结果是一个标识成功与否的布尔值：
+```go
+var w io.Writer = os.Stdout
+f, ok := w.(*os.File)      // success:  ok, f == os.Stdout
+b, ok := w.(*bytes.Buffer) // failure: !ok, b == nil
+```
+第一个结果等于**被断言类型**的**零值**，在这个例子中就是一个`nil`的`*bytes.Buffer`类型。第二个结果是标识成功与否的布尔值，通常赋值给一个命名为`ok`的变量。
 
-
-
-
-
-
-
-
-
+类型断言的结果常用来指示程序接下来该如何执行。当类型断言的操作对象是一个变量，你有时会看见原来的变量名重用而不是声明一个新的本地变量名，这个重用的变量原来的值会被覆盖（理解：其实是声明了一个同名的新的本地变量，外层原来的`w`不会被改变），如下面这样：
+```go
+if w, ok := w.(*os.File); ok {
+    // ...use w...
+}
+```
 
 
 

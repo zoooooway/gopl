@@ -14,7 +14,7 @@ var templ = `
 <body>
 
 <h1>simple calculator</h1>
-expression: <input type="text" id="expr">
+expression: <input type="text" id="expr" placeholder="input expression">
 <br>
 <button type="button" onclick="eval()">calculate</button>
 <br>
@@ -84,6 +84,5 @@ func handleEval(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := strconv.FormatFloat(float64(ep.Eval(env)), 'f', -1, 64)
-	fmt.Println(result)
 	fmt.Fprint(w, result)
 }
