@@ -1360,14 +1360,20 @@ default:        // ...
 
 当新的类型出现时，小的接口更容易满足。对于接口设计的一个好的标准就是 *ask only for what you need*（只考虑你需要的东西）。
 
+## Goroutines和Channels
+`goroutine`和`channel`是Go语言并发支持的核心，其支持“顺序通信进程”（communicating sequential processes）或被简称为CSP。CSP是一种现代的并发编程模型，在这种编程模型中值会在不同的运行实例（`goroutine`）中传递，尽管大多数情况下仍然是被限制在单一实例中。
 
+### Goroutines
+在Go语言中，每一个并发的执行单元叫作一个`goroutine`。
 
+当一个程序启动时，其主函数即在一个单独的`goroutine`中运行，我们叫它`main goroutin`e。新的`goroutine`会用go语句来创建。在语法上，go语句是一个普通的函数或方法调用前加上关键字go。go语句会使其语句中的函数在一个新创建的`goroutine`中运行。而go语句本身会迅速地完成。
+```go
+f()    // call f(); wait for it to return
+go f() // create a new goroutine that calls f(); don't wait
+```
 
-
-
-
-
-
+主函数返回时，所有的`goroutine`都会被直接打断，程序退出。
+除了从主函数退出或者直接终止程序之外，没有其它的编程方法能够让一个`goroutine`来打断另一个的执行，但是之后可以看到一种方式来实现这个目的，通过`goroutine`之间的通信来让一个`goroutine`请求其它的`goroutine`，并让被请求的`goroutine`自行结束执行。
 
 
 
