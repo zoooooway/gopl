@@ -1366,7 +1366,7 @@ default:        // ...
 ### Goroutines
 在Go语言中，每一个并发的执行单元叫作一个`goroutine`。
 
-当一个程序启动时，其主函数即在一个单独的`goroutine`中运行，我们叫它`main goroutin`e。新的`goroutine`会用go语句来创建。在语法上，go语句是一个普通的函数或方法调用前加上关键字go。go语句会使其语句中的函数在一个新创建的`goroutine`中运行。而go语句本身会迅速地完成。
+当一个程序启动时，其主函数即在一个单独的`goroutine`中运行，我们叫它`main goroutine`。新的`goroutine`会用go语句来创建。在语法上，go语句是一个普通的函数或方法调用前加上关键字go。go语句会使其语句中的函数在一个新创建的`goroutine`中运行。而go语句本身会迅速地完成。go后跟的函数的**参数**会在go语句自身执行时被**求值**。
 ```go
 f()    // call f(); wait for it to return
 go f() // create a new goroutine that calls f(); don't wait
@@ -1374,6 +1374,212 @@ go f() // create a new goroutine that calls f(); don't wait
 
 主函数返回时，所有的`goroutine`都会被直接打断，程序退出。
 除了从主函数退出或者直接终止程序之外，没有其它的编程方法能够让一个`goroutine`来打断另一个的执行，但是之后可以看到一种方式来实现这个目的，通过`goroutine`之间的通信来让一个`goroutine`请求其它的`goroutine`，并让被请求的`goroutine`自行结束执行。
+
+### Channels
+一个`channel`是一个通信机制，它可以让一个`goroutine`通过它给另一个`goroutine`发送值信息。
+
+每个`channel`都有一个特殊的类型，也就是`channels`可发送数据的类型。一个可以发送`int`类型数据的`channel`一般写为`chan int`。
+
+使用内置的`make`函数，我们可以创建一个`channel`：
+```go
+ch := make(chan int) // ch has type 'chan int'
+```
+
+和`map`类似，`channel`也对应一个`make`创建的底层数据结构的**引用**。
+**当我们复制一个`channel`或用于函数参数传递时，我们只是拷贝了一个`channel`引用，因此调用者和被调用者将引用同一个`channel`对象。**
+和其它的引用类型一样，`channel`的零值也是`nil`。
+
+两个相同类型的`channel`可以使用`==`运算符比较。**如果两个`channel`引用的是相同的对象，那么比较的结果为真**。
+一个`channel`也可以和`nil`进行比较。
+
+一个`channel`有发送和接受两个主要操作，都是通信行为。
+一个发送语句将一个值从一个`goroutine`通过`channel`发送到另一个执行**接收**操作的`goroutine`。
+```go
+ch <- x  // a send statement
+x = <-ch // a receive expression in an assignment statement
+<-ch     // a receive statement; result is discarded
+```
+
+`channel`还支持`close`操作，用于关闭`channel`，随后对基于该`channel`的任何**发送**操作都将导致`panic`异常。
+对一个已经被`close`过的`channel`进行**接收**操作依然可以接受到之前已经成功发送的数据；如果`channel`中已经没有数据的话将产生一个零值的数据。
+当一个被关闭的`channel`中已经发送的数据都被成功接收后，后续的接收操作将**不再阻塞**，它们会立即返回一个零值。
+使用内置的`close`函数就可以关闭一个`channel`：
+```go
+close(ch)
+```
+> 试图**重复关闭**一个`channel`将导致`panic`异常，试图关闭一个`nil`值的`channel`也将导致`panic`异常。关闭一个`channel`还会触发一个**广播**机制。
+
+其实你并不需要关闭每一个`channel`。只有当需要告诉接收者`goroutine`，所有的数据已经全部发送时才需要关闭`channel`。**不管一个`channel`是否被关闭，当它没有被引用时将会被Go语言的垃圾自动回收器回收**。（不要将关闭一个打开文件的操作和关闭一个`channel`操作混淆。对于每个打开的文件，都需要在不使用的时候调用对应的`Close`方法来关闭文件。）
+> 这个原因可能是打开文件的操作对应的是打开底层操作系统的资源，而`channel`是Go语言自身的逻辑实现，不直接对应底层操作系统资源，因此垃圾回收器可以负责其生命周期。（只是猜测，未去考证）
+
+**没有办法直接测试一个`channel`是否被关闭**，但是接收操作有一个变体形式：它多接收一个结果，多接收的第二个结果是一个布尔值`ok`，`ture`表示成功从`channel`接收到值，`false`表示`channel`已经被关闭并且里面没有值可接收。
+```go
+ x, ok := <-ch
+```
+
+Go语言的`range`循环可直接在`channel`上面迭代。`range`循环依次从`channel`接收数据，当`channel`被关闭并且没有值可接收时跳出循环。
+```go
+for x := range ch {
+    // do something
+}
+
+// 等价于
+for {
+    x, ok := <-ch
+    if !ok {
+        break // channel was closed and drained
+    }
+    // do something
+}
+```
+
+以最简单方式调用`make`函数创建的是一个**无缓存**的`channel`，但是我们也可以指定第二个整型参数，对应`channel`的**容量**。如果`channel`的**容量大于零**，那么该`channel`就是**带缓存**的`channel`。
+```go
+ch = make(chan int)    // unbuffered channel
+ch = make(chan int, 0) // unbuffered channel
+ch = make(chan int, 3) // buffered channel with capacity 3
+```
+
+#### 不带缓存的Channels
+**一个基于无缓存`Channels`的发送操作将导致发送者`goroutine`阻塞，直到另一个`goroutine`在相同的`Channels`上执行接收操作**，当发送的值通过`Channels`成功传输之后，两个`goroutine`可以继续执行后面的语句。反之，**如果接收操作先发生，那么接收者`goroutine`也将阻塞，直到有另一个`goroutine`在相同的`Channels`上执行发送操作**。
+> 这有点类似使用队列容量为0的线程池实现。
+
+
+#### 串联的Channels（Pipeline）
+`Channels`也可以用于将多个`goroutine`连接在一起，**一个`Channel`的输出作为下一个`Channel`的输入**。这种串联的`Channels`就是所谓的管道（`pipeline`）。
+
+下面的程序用两个`channels`将三个`goroutine`串联起来，如图所示。
+```go
+func main() {
+    naturals := make(chan int)
+    squares := make(chan int)
+
+    // Counter
+    go func() {
+        for x := 0; ; x++ {
+            naturals <- x
+        }
+    }()
+
+    // Squarer
+    go func() {
+        for {
+            x := <-naturals
+            squares <- x * x
+        }
+    }()
+
+    // Printer (in main goroutine)
+    for {
+        fmt.Println(<-squares)
+    }
+}
+```
+
+![](https://raw.githubusercontent.com/zoooooway/picgo/master/202304021627846.png)
+
+
+#### 单方向的Channel
+当一个`channel`作为一个函数参数时，它一般总是被专门用于只发送或者只接收。
+为了表明这种意图并防止被滥用，Go语言的类型系统提供了单方向的`channel`类型，分别用于只发送或只接收的`channel`。
+
+类型`chan<- int`表示一个只发送`int`的`channel`，只能发送不能接收。相反，类型`<-chan int`表示一个只接收`int`的`channel`，只能接收不能发送。（箭头`<-`和关键字`chan`的相对位置表明了`channel`的方向。）这种限制将在**编译期**检测。
+
+因为关闭操作只用于断言不再向`channel`发送新的数据，所以只有在发送者所在的`goroutine`才会调用`close`函数，因此对一个只接收的`channel`调用`close`将是一个编译错误。
+以下是改进版本的示例：
+```go
+func counter(out chan<- int) {
+    for x := 0; x < 100; x++ {
+        out <- x
+    }
+    close(out)
+}
+
+func squarer(out chan<- int, in <-chan int) {
+    for v := range in {
+        out <- v * v
+    }
+    close(out)
+}
+
+func printer(in <-chan int) {
+    for v := range in {
+        fmt.Println(v)
+    }
+}
+
+func main() {
+    naturals := make(chan int)
+    squares := make(chan int)
+    go counter(naturals)
+    go squarer(squares, naturals)
+    printer(squares)
+}
+```
+> 可以看到，创建的`channel`其实没有变化，只是在函数的形参声明上做了限制。
+> 前面提到过：当`channel`作为函数参数传递时，传递的是`channel`引用的拷贝，其指向同一个`channel`对象。
+
+调用`counter(naturals)`时，`naturals`的类型将隐式地从`chan int`转换成`chan<- int`。调用`printer(squares)`也会导致相似的隐式转换，这一次是转换为`<-chan int`类型只接收型的`channel`。任何双向`channel`向单向`channel`变量的赋值操作都将导致该隐式转换。这里并没有反向转换的语法：也就是不能将一个类似`chan<- int`类型的单向型的`channel`转换为`chan int`类型的双向型的`channel`。
+> 有一点需要注意，即使`channel`经过隐式转换，和原来的`channel`用`==`运算符比较时，仍然是相等的。
+> 疑惑：按变量一节所讲，比较一个变量是同时比较类型和值。如果做了转换，那类型不同比较结果应该是不相等才对？但似乎`channel`的比较只是看两者是否指向同一个底层数据结构。
+
+#### 带缓存的Channels
+带缓存的`channel`内部持有一个元素队列。
+队列的最大容量是在调用`make`函数创建`channel`时通过第二个参数指定的。
+```go
+ch = make(chan string, 3)
+```
+![](https://raw.githubusercontent.com/zoooooway/picgo/master/202304022038330.png)
+
+向缓存`channel`的发送操作就是向内部缓存队列的尾部插入元素，接收操作则是从队列的头部删除元素。（队列，先进先出）
+如果内部缓存队列是满的，那么发送操作将阻塞直到因另一个`goroutine`执行接收操作而释放了新的队列空间。相反，如果`channel`是空的，接收操作将阻塞直到有另一个`goroutine`执行发送操作而向队列插入元素。
+
+在某些特殊情况下，程序可能需要知道`channel`内部缓存的容量，可以用内置的`cap`函数获取; 需要获取`channel`内部有效元素个数则可以使用内置的`len`函数：
+```go
+ch = make(chan string, 3)
+
+ch <- "A"
+ch <- "B"
+ch <- "C"
+
+fmt.Println(cap(ch)) // "3"
+fmt.Println(<-ch) // "A"
+fmt.Println(len(ch)) // "2"
+```
+
+下面的例子展示了一个使用了带缓存`channel`的应用.它并发地向三个镜像站点发出请求，三个镜像站点分散在不同的地理位置。它们分别将收到的响应发送到带缓存`channel`，最后接收者只接收第一个收到的响应，也就是最快的那个响应。因此`mirroredQuery`函数可能在另外两个响应慢的镜像站点响应之前就返回了结果:
+```go
+func mirroredQuery() string {
+    responses := make(chan string, 3)
+    go func() { responses <- request("asia.gopl.io") }()
+    go func() { responses <- request("europe.gopl.io") }()
+    go func() { responses <- request("americas.gopl.io") }()
+    return <-responses // return the quickest response
+}
+
+func request(hostname string) (response string) { /* ... */ }
+```
+如果我们使用了无缓存的`channel`，那么两个慢的`goroutines`将会因为没有人接收而被永远卡住。这种情况，称为`goroutines`泄漏，这将是一个`BUG`。和垃圾变量不同，泄漏的`goroutines`并不会被自动回收，因此确保每个不再需要的`goroutine`能正常退出是重要的。
+
+关于无缓存或带缓存`channel`之间的选择，或者是带缓存`channel`的容量大小的选择，都可能影响程序的正确性。无缓存`channel`更强地保证了每个发送操作与相应的**同步**接收操作；但是对于带缓存`channel`，这些操作是解耦的。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
