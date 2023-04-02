@@ -1,7 +1,7 @@
 package main
 
 import (
-	"gopl/ch8/eg8.2/ftp"
+	ftp "gopl/ch8/eg8.2/ftp/client"
 )
 
 // 练习 8.2： 实现一个并发FTP服务器。
