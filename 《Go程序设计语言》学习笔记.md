@@ -45,7 +45,7 @@ if true {
 ```
 
 #### 指针
-如果用`var x int`声明语句声明一个x变量，那么`&x`表达式（取x变量的内存地址）将产生一个指向该整数变量的指针，指针对应的数据类型是`*int`，指针被称之为"指向int类型的指针"。如果指针名字为p，那么可以说"p指针指向变量x"，或者说"p指针保存了x变量的内存地址"。同时`*p`表达式对应p指针指向的变量的值。一般`*p`表达式读取指针指向的变量的值，这里为int类型的值，同时因为`*p`对应一个变量，所以该表达式也可以出现在赋值语句的左边，表示更新指针所指向的变量的值。
+如果用`var x int`声明语句声明一个x变量，那么`&x`表达式（取x变量的内存地址）将产生一个指向该整数变量的指针，指针对应的数据类型是`*int`，指针被称之为"指向`int`类型的指针"。如果指针名字为p，那么可以说"p指针指向变量x"，或者说"p指针保存了x变量的内存地址"。同时`*p`表达式对应p指针指向的变量的值。一般`*p`表达式读取指针指向的变量的值，这里为`int`类型的值，同时因为`*p`对应一个变量，所以该表达式也可以出现在赋值语句的左边，表示更新指针所指向的变量的值。
 ```go
 x := 1
 p := &x         // p, of type *int, points to x
@@ -1563,13 +1563,70 @@ func request(hostname string) (response string) { /* ... */ }
 
 关于无缓存或带缓存`channel`之间的选择，或者是带缓存`channel`的容量大小的选择，都可能影响程序的正确性。无缓存`channel`更强地保证了每个发送操作与相应的**同步**接收操作；但是对于带缓存`channel`，这些操作是解耦的。
 
+### 并发的循环
+有如下程序：
+```go
+func makeThumbnails3(filenames []string) {
+    ch := make(chan struct{})
+    for _, f := range filenames {
+        go func(f string) {
+            thumbnail.ImageFile(f) // NOTE: ignoring errors
+            ch <- struct{}{}
+        }(f)
+    }
+    // Wait for goroutines to complete.
+    for range filenames {
+        <-ch
+    }
+}
+```
+注意将`f`的值作为一个显式的变量传给了函数，而不是在循环的闭包中声明：
+```go
+for _, f := range filenames {
+    go func() {
+        thumbnail.ImageFile(f) // NOTE: incorrect!
+        // ...
+    }()
+}
+```
+注意**匿名函数中的循环变量快照**问题。上面这个单独的变量`f`是被所有的匿名函数值所共享，且会被连续的循环迭代所更新的。当新的`goroutine`开始执行字面函数时，`for`循环可能已经更新了`f`并且开始了另一轮的迭代或者（更有可能的）已经结束了整个循环，所以当这些`goroutine`开始读取`f`的值时，它们所看到的值已经是`slice`的最后一个元素了。显式地添加这个参数，我们能够确保使用的`f`是当`go`语句执行时的“当前”那个`f`。
 
+为了知道最后一个`goroutine`什么时候结束（最后一个结束并不一定是最后一个开始），我们需要一个递增的计数器，在每一个`goroutine`启动时加一，在`goroutine`退出时减一。这需要一种特殊的计数器，这个计数器需要在多个`goroutine`操作时做到安全并且提供在其减为零之前一直等待的一种方法。这种计数类型被称为`sync.WaitGroup`。
+```go
+func makeThumbnails6(filenames <-chan string) int64 {
+    sizes := make(chan int64)
+    var wg sync.WaitGroup // number of working goroutines
+    for f := range filenames {
+        wg.Add(1)
+        // worker
+        go func(f string) {
+            defer wg.Done()
+            thumb, err := thumbnail.ImageFile(f)
+            if err != nil {
+                log.Println(err)
+                return
+            }
+            info, _ := os.Stat(thumb) // OK to ignore error
+            sizes <- info.Size()
+        }(f)
+    }
 
+    // closer
+    go func() {
+        wg.Wait()
+        close(sizes)
+    }()
 
+    var total int64
+    for size := range sizes {
+        total += size
+    }
+    return total
+}
+```
+![](https://raw.githubusercontent.com/zoooooway/picgo/master/202304032050366.png)
 
-
-
-
+`Add`是为计数器加一，必须在worker `goroutine`开始之前调用，而不是在`goroutine`中；否则的话我们没办法确定`Add`是在closer `goroutine`调用`Wait`之前被调用。`Done`没有任何参数，它和`Add(-1)`是等价的。
 
 
 
