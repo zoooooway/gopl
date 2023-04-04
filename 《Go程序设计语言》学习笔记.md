@@ -392,6 +392,8 @@ p2 := Point{X:1} // 如果成员被忽略的话将默认用零值
 
 因为**在Go语言中，所有的函数参数都是值拷贝传入的**，函数参数将不再是函数调用时的原始变量。**因此，如果要在函数内部修改结构体成员的话，必须使用指针传入结构体**。
 
+如果结构体没有任何成员的话就是空结构体，写作`struct{}`。它的大小为0，也不包含任何信息，但是有时候依然是有价值的。
+
 ### JSON
 `JavaScript` 对象表示法（`JSON`）是一种用于发送和接收结构化信息的标准协议。
 
@@ -1627,6 +1629,7 @@ func makeThumbnails6(filenames <-chan string) int64 {
 ![](https://raw.githubusercontent.com/zoooooway/picgo/master/202304032050366.png)
 
 `Add`是为计数器加一，必须在worker `goroutine`开始之前调用，而不是在`goroutine`中；否则的话我们没办法确定`Add`是在closer `goroutine`调用`Wait`之前被调用。`Done`没有任何参数，它和`Add(-1)`是等价的。
+
 
 
 
