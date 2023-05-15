@@ -1465,7 +1465,7 @@ close(ch)
  x, ok := <-ch
 ```
 
-Go语言的`range`循环可直接在`channel`上面迭代。`range`循环依次从`channel`接收数据，当`channel`被关闭并且没有值可接收时跳出循环。
+Go语言的`range`循环可直接在`channel`上面迭代。**`range`循环依次从`channel`接收数据，当`channel`被关闭并且没有值可接收时跳出循环**。
 ```go
 for x := range ch {
     // do something
@@ -1676,8 +1676,31 @@ func makeThumbnails6(filenames <-chan string) int64 {
 
 `Add(1)`是为计数器加一，必须在worker `goroutine`开始之前调用，而不是在`goroutine`中；否则的话我们没办法确保`Add(1)`是在closer `goroutine`调用`Wait`之前被调用。`Done`没有任何参数，它和`Add(-1)`是等价的。
 
+### 基于select的多路复用
+通常, 我们经常会需要等待多个`channel`的接收操作, 但接收操作会在没有元素到达时阻塞. 如果我们对每个`channel`都启用一个`goroutine`来去执行接收操作, 那么又会造成过多的`goroutine`.
+`select`关键字用于解决这一问题, 也就是耳熟能详的多路复用.
+语法形式如下:
+```go
+select {
+case <-ch1:
+    // ...
+case x := <-ch2:
+    // ...use x...
+case ch3 <- y:
+    // ...
+default:
+    // ...
+}
+```
+每一个`case`代表一个通信操作(在某个`channel`上进行发送或者接收), 并且会包含一些语句组成的一个语句块. 一个接收表达式可能只包含接收表达式自身(译注: 不把接收到的值赋值给变量什么的), 就像上面的第一个`case`, 或者包含在一个简短的变量声明中, 像第二个`case`里一样; 第二种形式让你能够引用接收到的值.
 
+`select`会等待`case`中有能够执行的`case`时去执行. 
+当条件满足时, `select`才会去通信并执行`case`之后的语句; 这时候其它通信是不会执行的.一个没有任何`case`的`select`语句写作`select{}`, 会永远地等待下去.
 
+**如果多个`case`同时就绪时，`select`会随机地选择一个执行**, 这样来保证每一个`channel`都有平等的被`select`的机会.
+
+`channel`的零值是`nil`.
+也许会让你觉得比较奇怪, `nil`的`channel`有时候也是有一些用处的. 因为**对一个`nil`的`channel`发送和接收操作会永远阻塞**，在`select`语句中操作`nil`的`channel`永远都不会被`select`到。
 
 
 

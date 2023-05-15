@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -40,7 +41,7 @@ func echo(c net.Conn, shout string, delay time.Duration, wg *sync.WaitGroup) {
 func handleConn(c net.Conn) {
 	ticker := time.NewTicker(10 * time.Second)
 	alive := &flag{false}
-
+	filepath.Join()
 	go func() {
 		for {
 			select {
