@@ -339,7 +339,7 @@ if age, ok := ages["bob"]; !ok {
 map上的大部分操作，包括查找、删除、`len` 和 `range` 循环都可以安全工作在 `nil` 值的map上，它们的行为和一个空的map类似。但是向一个 `nil` 值的map存入元素将导致一个`panic`异常。
 应此，需要谨记：**在向map存数据前必须先创建map**。
 
-map中的元素并不是一个变量，因此我们不能对map的元素进行取址操作：
+我们不能对map的元素进行取址操作：
 ```go
 _ = &ages["bob"] // compile error: cannot take address of map element
 ```
@@ -1362,6 +1362,52 @@ default:        // ...
 
 当新的类型出现时，小的接口更容易满足。对于接口设计的一个好的标准就是 *ask only for what you need*（只考虑你需要的东西）。
 
+
+#### 拓展: flag.Value接口
+标准的接口类型flag.Value可以提供利用命令行标记定义新的符号的能力.
+使用方式如下: 
+```go
+var period = flag.Duration("period", 1*time.Second, "sleep period")
+
+func main() {
+    flag.Parse()
+    fmt.Printf("Sleeping for %v...", *period)
+    time.Sleep(*period)
+    fmt.Println()
+}
+``` 
+接着我们就可以使用参数来改变标记的值:
+```shell
+go build sleep
+# 使用默认period值来启动程序
+./sleep 
+# 这表示设置period的值为50ms后启动程序
+./sleep -period 50ms 
+```
+
+注意, flag.Value 的返回值是一个指针, 因此我们应该通过指针去操作值而不是持有变量去操作值. 下面是一个错误的例子:
+```go
+var depth1 = flag.Uint("depth", 1, "Specify depth")
+var depth2 = *flag.Uint("depth", 2, "Specify depth")
+
+func main() {
+	fmt.Println(*depth1)
+	fmt.Println(depth2)
+	flag.Parse()
+	fmt.Println(*depth1)
+	fmt.Println(depth2)
+}
+```
+执行: 
+```shell
+.\crawl.exe -depth1 3 -depth2 4
+1
+2
+3
+2
+```
+可以看到, 如果持有depth2的变量去操作, depth2会一直保持为默认值, 后续执行`flag.Parse()`后, 由于只是指针指向的数据改变, 我们持有的depth2变量将不会改变.
+
 ## Goroutines和Channels
 `goroutine`和`channel`是Go语言并发支持的核心，其支持“顺序通信进程”（communicating sequential processes）或被简称为CSP。CSP是一种现代的并发编程模型，在这种编程模型中值会在不同的运行实例（`goroutine`）中传递，尽管大多数情况下仍然是被限制在单一实例中。
 
@@ -1628,7 +1674,7 @@ func makeThumbnails6(filenames <-chan string) int64 {
 ```
 ![](https://raw.githubusercontent.com/zoooooway/picgo/master/202304032050366.png)
 
-`Add`是为计数器加一，必须在worker `goroutine`开始之前调用，而不是在`goroutine`中；否则的话我们没办法确定`Add`是在closer `goroutine`调用`Wait`之前被调用。`Done`没有任何参数，它和`Add(-1)`是等价的。
+`Add(1)`是为计数器加一，必须在worker `goroutine`开始之前调用，而不是在`goroutine`中；否则的话我们没办法确保`Add(1)`是在closer `goroutine`调用`Wait`之前被调用。`Done`没有任何参数，它和`Add(-1)`是等价的。
 
 
 

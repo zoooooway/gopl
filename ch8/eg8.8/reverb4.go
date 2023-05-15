@@ -10,9 +10,7 @@ import (
 	"time"
 )
 
-// 练习8.4： 修改reverb2服务器，在每一个连接中使用sync.WaitGroup来计数活跃的echo goroutine。
-// 当计数减为零时，关闭TCP连接的写入，像练习8.3中一样。
-// 验证一下你的修改版netcat3客户端会一直等待所有的并发“喊叫”完成，即使是在标准输入流已经关闭的情况下。
+// 练习8.8： 使用select来改造8.3节中的echo服务器，为其增加超时，这样服务器可以在客户端10秒中没有任何喊话时自动断开连接。
 func main() {
 	l, err := net.Listen("tcp", "localhost:8000")
 	if err != nil {
@@ -25,6 +23,7 @@ func main() {
 			log.Print(err) // e.g., connection aborted
 			continue
 		}
+		log.Printf("%s accepted", conn.RemoteAddr())
 		go handleConn(conn)
 	}
 }
@@ -39,8 +38,32 @@ func echo(c net.Conn, shout string, delay time.Duration, wg *sync.WaitGroup) {
 }
 
 func handleConn(c net.Conn) {
+	ticker := time.NewTicker(10 * time.Second)
+	alive := &flag{false}
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				if !alive.bool {
+					c.Close()
+					ticker.Stop()
+					return
+				}
+				alive.bool = false
+			}
+		}
+	}()
+
+	doHandle(c, alive)
+}
+
+func doHandle(c net.Conn, alive *flag) {
+	defer c.Close()
+
 	input := bufio.NewScanner(c)
 	var wg sync.WaitGroup
+	wg.Add(1)
 	for input.Scan() {
 		wg.Add(1)
 		go func() {
@@ -49,10 +72,15 @@ func handleConn(c net.Conn) {
 			tc.CloseWrite()
 			log.Println("CloseWrite...")
 		}()
-		go echo(c, input.Text(), 1*time.Second, &wg)
+		go func() {
+			alive.bool = true
+			echo(c, input.Text(), 1*time.Second, &wg)
+		}()
 	}
+	log.Println("close connection..")
 	// NOTE: ignoring potential errors from input.Err()
+}
 
-	c.Close()
-
+type flag struct {
+	bool
 }
