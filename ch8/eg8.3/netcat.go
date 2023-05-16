@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"io"
 	"log"
 	"net"
@@ -11,7 +12,10 @@ import (
 // 一个TCP连接有读和写两个部分，可以使用CloseRead和CloseWrite方法分别关闭它们。
 // 修改netcat3的主goroutine代码，只关闭网络连接中写的部分，这样的话后台goroutine可以在标准输入被关闭后继续打印从reverb1服务器传回的数据。
 func main() {
-	raddr, e := net.ResolveTCPAddr("tcp", "localhost:8000")
+	addr := flag.String("addr", "localhost:8000", "tcp address")
+	flag.Parse()
+
+	raddr, e := net.ResolveTCPAddr("tcp", *addr)
 	if e != nil {
 		log.Fatal("illegal address")
 	}

@@ -1697,13 +1697,36 @@ default:
 `select`会等待`case`中有能够执行的`case`时去执行. 
 当条件满足时, `select`才会去通信并执行`case`之后的语句; 这时候其它通信是不会执行的.一个没有任何`case`的`select`语句写作`select{}`, 会永远地等待下去.
 
-**如果多个`case`同时就绪时，`select`会随机地选择一个执行**, 这样来保证每一个`channel`都有平等的被`select`的机会.
+**如果多个`case`同时就绪时，`select`会随机地选择一个执行**, 这样来保证每一个`channel`都有平等的被`select`的机会. 
+如果所有通道都没有准备好, 那么执行`default`块中的代码(这通常可以用来实现非阻塞的操作).
 
 `channel`的零值是`nil`.
-也许会让你觉得比较奇怪, `nil`的`channel`有时候也是有一些用处的. 因为**对一个`nil`的`channel`发送和接收操作会永远阻塞**，在`select`语句中操作`nil`的`channel`永远都不会被`select`到。
+也许会让你觉得比较奇怪, `nil`的`channel`有时候也是有一些用处的. 因为**对一个`nil`的`channel`发送和接收操作会永远阻塞**, 在`select`语句中操作`nil`的`channel`永远都不会被`select`到。
 
+#### 使用select实现读写超时
+`channel`在达到容量上限时会造成写入阻塞, 在内部没有元素时会造成读取阻塞. 可以使用`select`和`ticker`实现超时机制, 在阻塞一段时间后自动放弃读写.
+```go
+// 示例: 写入超时
+// 超时时间
+tk := time.NewTicker(10 * time.Second)
+select {
+case ch1 <- msg:
+    // ...
+case <-tk:
+    // ...
+}
+```
 
-
+也可以使用`select`实现非阻塞写入和读取
+```go
+// 示例: 非阻塞写入
+select {
+case ch1 <- msg:
+    // 已经写入成功
+default:
+    // 返回写入失败
+}
+```
 
 
 
