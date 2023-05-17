@@ -1728,20 +1728,139 @@ default:
 }
 ```
 
+## 基于共享变量的并发
+### 竞争条件
+在一个线性（只有一个`goroutine`的）的程序中，程序的执行顺序只由程序的逻辑来决定。
+在有两个或更多`goroutine`的程序中，每一个`goroutine`内的语句也是按照既定的顺序去执行的, 但一般情况下我们没办法确认分别位于两个`goroutine`的事件x和y的执行顺序.
+当我们没有办法自信地确认一个事件是在另一个事件的前面或者后面发生的话，就说明x和y这两个事件是并发的。
 
+如果在并发的情况下，这个函数依然可以正确地工作的话，那么我们就说这个函数是并发安全的.
+对于某个类型来说，如果其所有可访问的方法和操作都是并发安全的话，那么该类型便是并发安全的。
 
+无论任何时候，只要有多个`goroutine`并发访问同一变量，且至少其中的一个是写操作的时候就会发生数据竞争。
 
+如果我们能保证变量初始化后不再修改，并且访问时已经初始化完成，那么就不会存在数据竞争问题。但这有时很难做到。
 
+避免从多个`goroutine`访问变量可以避免数据竞争。
+由于其它的`goroutine`不能够直接访问变量，它们只能使用一个`channel`来发送请求给指定的`goroutine`来查询更新变量。提供通过`channel`来请求指定的变量的`goroutine`叫做这个变量的`monitor`（监控）`goroutine`。
 
+如果允许很多`goroutine`去访问变量，但是在同一个时刻最多只有一个`goroutine`在访问。这样也可以避免数据竞争，这种方式被称为“互斥”。
 
+### sync.Mutex互斥锁
+`buffered channel`可以实现最多只有缓存容量大小的`goroutine`执行，如果我们将缓存容量设置为1，那么我们可以实现最多只有一个`goroutine`同时执行。
+一个只能为1和0的信号量叫做二元信号量（binary semaphore）。
 
+sync包里的`Mutex`类型支持这种二元信号量。它的`Lock`方法能够获取到token(这里叫锁)，并且`Unlock`方法会释放这个token：
+```go
+var (
+    mu      sync.Mutex // guards balance
+    balance int
+)
 
+func Deposit(amount int) {
+    mu.Lock()
+    balance = balance + amount
+    mu.Unlock()
+}
 
+func Balance() int {
+    mu.Lock()
+    b := balance
+    mu.Unlock()
+    return b
+}
+```
 
+惯例来说，被`mutex`所保护的变量是在`mutex`变量声明之后立刻声明的。
 
+在`Lock`和`Unlock`之间的代码段中的内容`goroutine`可以随便读取或者修改，这个代码段叫做临界区。锁的持有者在其他`goroutine`获取该锁之前需要调用`Unlock`。
+`goroutine`在结束后释放锁是必要的，无论以哪条路径通过函数都需要释放，即使是在错误路径中，也要记得释放。
 
+用`defer`来调用`Unlock`，临界区会隐式地延伸到函数作用域的最后。
+```go
+func Balance() int {
+    mu.Lock()
+    defer mu.Unlock()
+    return balance
+}
+```
+> 大多数情况下对于并发程序来说，代码的整洁性比过度的优化更重要。
 
+`mutex`并不是可重入的，这意味着当一个`goroutine`获取锁后，再次尝试获取锁时会陷入死锁，比如下面这个函数：
+```go
+// NOTE: incorrect!
+func Withdraw(amount int) bool {
+    mu.Lock()
+    defer mu.Unlock()
+    Deposit(-amount)
+    if Balance() < 0 {
+        Deposit(amount)
+        return false // insufficient funds
+    }
+    return true
+}
+```
 
+一个通用的解决方案是将一个函数分离为多个函数，比如我们把`Deposit`分离成两个：一个不导出的函数`deposit`，这个函数假设锁总是会被保持并去做实际的操作，另一个是导出的函数`Deposit`，这个函数会调用`deposit`，但在调用前会先去获取锁。
 
+```go
+func Deposit(amount int) {
+    mu.Lock()
+    defer mu.Unlock()
+    deposit(amount)
+}
 
+// This function requires that the lock be held.
+func deposit(amount int) { balance += amount }
+```
+### sync.RWMutex读写锁
+允许多个只读操作并行执行，但写操作会完全互斥，这种锁叫作“多读单写”锁（multiple readers, single writer lock）。
+Go语言提供的这样的锁是`sync.RWMutex`：
+```go
+var mu sync.RWMutex
+var balance int
+func Balance() int {
+    mu.RLock() // readers lock
+    defer mu.RUnlock()
+    return balance
+}
+```
 
+`RLock`只能在临界区共享变量没有任何写入操作时可用。通常，我们不应该假设逻辑上的只读函数不会去进行写入，比如一个方法功能是访问一个变量，但它也有可能会同时去给一个内部的计数器+1，或者去更新缓存。如果你没办法确认，请使用互斥锁。
+
+读锁是一种共享锁，共享锁。不释放共享锁的话，也没有任何办法来将一个共享锁升级为一个互斥锁。
+
+`RWMutex`需要更复杂的内部记录，所以会让它比一般的无竞争锁的`mutex`慢一些。
+
+### 内存同步
+> https://colobu.com/2022/09/12/go-synchronization-is-hard/
+
+在现代计算机中可能会有一堆处理器，每一个都会有其本地缓存（local cache）。为了效率，对内存的写入一般会在每一个处理器中缓冲，并在必要时一起`flush`到主存。这种情况下这些数据可能会以与当初`goroutine`写入顺序不同的顺序被提交到主存。
+像`channel`通信或者互斥量操作这样的原语会使处理器将其聚集的写入`flush`并`commit`，这样`goroutine`在某个时间点上的执行结果才能被其它处理器上运行的`goroutine`得到。
+
+观察如下程序：
+```go
+var x, y int
+go func() {
+    x = 1 // A1
+    fmt.Print("y:", y, " ") // A2
+}()
+go func() {
+    y = 1                   // B1
+    fmt.Print("x:", x, " ") // B2
+}()
+```
+在某些情况下，会输出：
+```
+x:0 y:0
+y:0 x:0
+```
+根据所使用的编译器，CPU，或者其它很多影响因子，这两种情况也是有可能发生的。
+
+在Go语言中，每个独立的`goroutine`中，每一条语句的执行顺序是可以被保证的，也就是说`goroutine`内顺序是连贯的。
+但是在不使用`channel`且不使用`mutex`这样的显式同步操作时，我们就没法保证事件在不同的`goroutine`中看到的执行顺序是一致的了。
+
+尽管`goroutine` A中一定需要观察到x=1执行成功之后才会去读取y，但它没法确保自己观察得到`goroutine` B中对y的写入，所以A还可能会打印出y的一个旧版的值。
+并且因为赋值和打印指向不同的变量，编译器可能会断定两条语句的顺序不会影响执行结果，并且会交换两个语句的执行顺序（指令重排）。如果两个`goroutine`在不同的CPU上执行，每一个核心有自己的缓存，这样一个`goroutine`的写入对于其它`goroutine`的`Print`，在主存同步之前就是不可见的了。
+
+所有并发的问题都可以用一致的、简单的既定的模式来规避。所以可能的话，**将变量限定在goroutine内部；如果是多个goroutine都需要访问的变量，使用互斥条件来访问**。

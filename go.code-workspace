@@ -10,6 +10,9 @@
 		"editor.suggest.snippetsPreventQuickSuggestions": false,
 		"cSpell.words": [
 			"gopl"
-		]
+		],
+		"commentTranslate.translationAli.accessKeyId": "",
+		"commentTranslate.translationAli.accessKeySecret": "",
+		"commentTranslate.hover.enabled": true
 	}
 }
