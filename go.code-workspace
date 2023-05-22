@@ -5,7 +5,7 @@
 		}
 	],
 	"settings": {
-		"commentTranslate.source": "Google",
+		"commentTranslate.source": "zoooooway.comment-translate-plugin-baidu-baidu",
 		"commentTranslate.multiLineMerge": true,
 		"editor.suggest.snippetsPreventQuickSuggestions": false,
 		"cSpell.words": [
